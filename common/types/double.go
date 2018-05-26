@@ -58,22 +58,30 @@ func (d Double) Compare(other ref.Value) ref.Value {
 }
 
 func (d Double) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	value := d.Value()
 	refKind := typeDesc.Kind()
 	switch refKind {
 	case reflect.Float32:
-		return float32(value.(float64)), nil
+		return float32(d), nil
 	case reflect.Float64:
-		return value, nil
+		return float64(d), nil
 	case reflect.Ptr:
 		if typeDesc == jsonValueType {
 			return &structpb.Value{
 				Kind: &structpb.Value_NumberValue{
 					NumberValue: float64(d)}}, nil
 		}
-	}
-	if reflect.TypeOf(d).AssignableTo(typeDesc) {
-		return d, nil
+		switch typeDesc.Elem().Kind() {
+		case reflect.Float32:
+			ptr := float32(d)
+			return &ptr, nil
+		case reflect.Float64:
+			ptr := float64(d)
+			return &ptr, nil
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(d).Implements(typeDesc) {
+			return d, nil
+		}
 	}
 	return nil, fmt.Errorf("type conversion error from Double to '%v'", typeDesc)
 }

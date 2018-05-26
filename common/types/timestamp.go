@@ -73,12 +73,15 @@ func (t Timestamp) Compare(other ref.Value) ref.Value {
 }
 
 func (t Timestamp) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	if typeDesc == reflect.TypeOf(&tpb.Timestamp{}) {
-		return t.Value(), nil
-	}
-	// If the timestamp is already assignable to the desired type return it.
-	if reflect.TypeOf(t).AssignableTo(typeDesc) {
-		return t, nil
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		if typeDesc == reflect.TypeOf(&tpb.Timestamp{}) {
+			return t.Value(), nil
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(t).Implements(typeDesc) {
+			return t, nil
+		}
 	}
 	return nil, fmt.Errorf("type conversion error from "+
 		"'google.protobuf.Duration' to '%v'", typeDesc)

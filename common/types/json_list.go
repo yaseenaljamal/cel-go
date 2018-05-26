@@ -77,21 +77,20 @@ func (l *jsonListValue) ConvertToNative(typeDesc reflect.Type) (interface{}, err
 		}
 		return nativeList.Interface(), nil
 	case reflect.Ptr:
-		if typeDesc == jsonValueType {
+		switch typeDesc {
+		case jsonValueType:
 			return &structpb.Value{
 				Kind: &structpb.Value_ListValue{
 					ListValue: l.ListValue}}, nil
-		}
-		if typeDesc == jsonListValueType {
+		case jsonListValueType:
 			return l.ListValue, nil
-		}
-		if typeDesc == anyValueType {
+		case anyValueType:
 			return ptypes.MarshalAny(l.Value().(proto.Message))
 		}
-	}
-	// If the list is already assignable to the desired type return it.
-	if reflect.TypeOf(l).AssignableTo(typeDesc) {
-		return l, nil
+	case reflect.Interface:
+		if reflect.TypeOf(l).Implements(typeDesc) {
+			return l, nil
+		}
 	}
 	return nil, fmt.Errorf("no conversion found from list type to native type."+
 		" list elem: google.protobuf.Value, native type: %v", typeDesc)

@@ -65,21 +65,20 @@ func (m *jsonStruct) ConvertToNative(typeDesc reflect.Type) (interface{}, error)
 			return nativeMap.Interface(), nil
 		}
 	case reflect.Ptr:
-		if typeDesc == jsonValueType {
+		switch typeDesc {
+		case jsonValueType:
 			return &structpb.Value{
 				Kind: &structpb.Value_StructValue{
 					StructValue: m.Struct}}, nil
-		}
-		if typeDesc == jsonStructType {
+		case jsonStructType:
 			return m.Struct, nil
-		}
-		if typeDesc == anyValueType {
+		case anyValueType:
 			return ptypes.MarshalAny(m.Value().(proto.Message))
 		}
-	}
-	// If the struct is already assignable to the desired type return it.
-	if reflect.TypeOf(m).AssignableTo(typeDesc) {
-		return m, nil
+	case reflect.Interface:
+		if reflect.TypeOf(m).Implements(typeDesc) {
+			return m, nil
+		}
 	}
 	return nil, fmt.Errorf(
 		"no conversion found from map type to native type."+

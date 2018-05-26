@@ -51,16 +51,23 @@ func (b Bool) Compare(other ref.Value) ref.Value {
 }
 
 func (b Bool) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	if typeDesc == jsonValueType {
-		return &structpb.Value{
-			Kind: &structpb.Value_BoolValue{
-				BoolValue: b.Value().(bool)}}, nil
-	}
-	if typeDesc.Kind() == reflect.Bool {
-		return b.Value(), nil
-	}
-	if reflect.TypeOf(b).AssignableTo(typeDesc) {
-		return b, nil
+	switch typeDesc.Kind() {
+	case reflect.Bool:
+		return bool(b), nil
+	case reflect.Ptr:
+		if typeDesc == jsonValueType {
+			return &structpb.Value{
+				Kind: &structpb.Value_BoolValue{
+					BoolValue: bool(b)}}, nil
+		}
+		if typeDesc.Elem().Kind() == reflect.Bool {
+			ptr := bool(b)
+			return &ptr, nil
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(b).Implements(typeDesc) {
+			return b, nil
+		}
 	}
 	return nil, fmt.Errorf("type conversion error from bool to '%v'", typeDesc)
 }

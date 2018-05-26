@@ -15,6 +15,7 @@
 package types
 
 import (
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/struct"
@@ -33,22 +34,26 @@ var (
 )
 
 func (n Null) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	if typeDesc == jsonValueType {
-		return &structpb.Value{
-			Kind: &structpb.Value_NullValue{
-				NullValue: structpb.NullValue_NULL_VALUE}}, nil
-	}
-	if typeDesc == anyValueType {
-		pb, err := n.ConvertToNative(jsonValueType)
-		if err != nil {
-			return nil, err
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		switch typeDesc {
+		case jsonValueType:
+			return &structpb.Value{
+				Kind: &structpb.Value_NullValue{
+					NullValue: structpb.NullValue_NULL_VALUE}}, nil
+		case anyValueType:
+			pb, err := n.ConvertToNative(jsonValueType)
+			if err != nil {
+				return nil, err
+			}
+			return ptypes.MarshalAny(pb.(proto.Message))
 		}
-		return ptypes.MarshalAny(pb.(proto.Message))
+	default:
+		if reflect.TypeOf(n).AssignableTo(typeDesc) {
+			return n, nil
+		}
 	}
-	if reflect.TypeOf(n).AssignableTo(typeDesc) {
-		return n, nil
-	}
-	return structpb.NullValue_NULL_VALUE, nil
+	return nil, fmt.Errorf("type conversion error from null to '%v'", typeDesc)
 }
 
 func (n Null) ConvertToType(typeVal ref.Type) ref.Value {

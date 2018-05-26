@@ -45,27 +45,33 @@ func (m *baseMap) Contains(index ref.Value) ref.Value {
 	return !Bool(IsError(m.Get(index).Type()))
 }
 
-func (m *baseMap) ConvertToNative(refType reflect.Type) (interface{}, error) {
-	// JSON conversion.
-	if refType == jsonValueType || refType == jsonStructType {
-		jsonEntries, err :=
-			m.ConvertToNative(reflect.TypeOf(map[string]*structpb.Value{}))
-		if err != nil {
-			return nil, err
+func (m *baseMap) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		// JSON conversion.
+		if typeDesc == jsonValueType || typeDesc == jsonStructType {
+			jsonEntries, err :=
+				m.ConvertToNative(reflect.TypeOf(map[string]*structpb.Value{}))
+			if err != nil {
+				return nil, err
+			}
+			jsonMap := &structpb.Struct{
+				Fields: jsonEntries.(map[string]*structpb.Value)}
+			if typeDesc == jsonStructType {
+				return jsonMap, nil
+			}
+			return &structpb.Value{
+				Kind: &structpb.Value_StructValue{
+					StructValue: jsonMap}}, nil
 		}
-		jsonMap := &structpb.Struct{
-			Fields: jsonEntries.(map[string]*structpb.Value)}
-		if refType == jsonStructType {
-			return jsonMap, nil
+	case reflect.Interface:
+		if reflect.TypeOf(m).Implements(typeDesc) {
+			return m, nil
 		}
-		return &structpb.Value{
-			Kind: &structpb.Value_StructValue{
-				StructValue: jsonMap}}, nil
-	}
-
-	// Non-map conversion.
-	if refType.Kind() != reflect.Map {
-		return nil, fmt.Errorf("type conversion error from map to '%v'", refType)
+	case reflect.Map:
+		// fall-through
+	default:
+		return nil, fmt.Errorf("type conversion error from map to '%v'", typeDesc)
 	}
 
 	// Map conversion.
@@ -75,16 +81,16 @@ func (m *baseMap) ConvertToNative(refType reflect.Type) (interface{}, error) {
 	thisElem := thisType.Elem()
 	thisElemKind := thisElem.Kind()
 
-	otherKey := refType.Key()
+	otherKey := typeDesc.Key()
 	otherKeyKind := otherKey.Kind()
-	otherElem := refType.Elem()
+	otherElem := typeDesc.Elem()
 	otherElemKind := otherElem.Kind()
 
 	if otherKeyKind == thisKeyKind && otherElemKind == thisElemKind {
 		return m.value, nil
 	}
 	elemCount := m.Size().(Int)
-	nativeMap := reflect.MakeMapWithSize(refType, int(elemCount))
+	nativeMap := reflect.MakeMapWithSize(typeDesc, int(elemCount))
 	it := m.Iterator()
 	for it.HasNext() == True {
 		key := it.Next()

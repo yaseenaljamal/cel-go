@@ -96,12 +96,15 @@ func (d Duration) Compare(other ref.Value) ref.Value {
 }
 
 func (d Duration) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	if typeDesc == reflect.TypeOf(&dpb.Duration{}) {
-		return d.Value(), nil
-	}
-	// If the duration is already assignable to the desired type return it.
-	if reflect.TypeOf(d).AssignableTo(typeDesc) {
-		return d, nil
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		if typeDesc == reflect.TypeOf(&dpb.Duration{}) {
+			return d.Value(), nil
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(d).Implements(typeDesc) {
+			return d, nil
+		}
 	}
 	return nil, fmt.Errorf("type conversion error from "+
 		"'google.protobuf.Duration' to '%v'", typeDesc)

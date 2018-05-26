@@ -48,15 +48,20 @@ func NewObject(value proto.Message) ref.Value {
 }
 
 func (o *protoObj) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	if typeDesc.AssignableTo(o.refValue.Type()) {
-		return o.value, nil
-	}
-	if typeDesc == anyValueType {
-		return ptypes.MarshalAny(o.Value().(proto.Message))
-	}
-	// If the object is already assignable to the desired type return it.
-	if reflect.TypeOf(o).AssignableTo(typeDesc) {
-		return o, nil
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		if typeDesc == anyValueType {
+			return ptypes.MarshalAny(o.Value().(proto.Message))
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(o).Implements(typeDesc) {
+			return o, nil
+		}
+	default:
+		// Few types have an internal reflected type, but object does.
+		if o.refValue.Type().AssignableTo(typeDesc) {
+			return o.value, nil
+		}
 	}
 	return nil, fmt.Errorf("type conversion error from '%v' to '%v'",
 		o.refValue.Type(), typeDesc)

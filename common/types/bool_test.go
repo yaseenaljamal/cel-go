@@ -17,6 +17,7 @@ package types
 import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/struct"
+	"github.com/google/cel-go/common/types/ref"
 	"reflect"
 	"testing"
 )
@@ -62,6 +63,13 @@ func TestBool_ConvertToNative_Json(t *testing.T) {
 		IsError(val) ||
 		!proto.Equal(val.(proto.Message), pbVal) {
 		t.Error("Error during conversion to json Value type", err, val)
+	}
+}
+
+func TestBool_ConvertToNative_RefValue(t *testing.T) {
+	val, err := True.ConvertToNative(reflect.TypeOf([]ref.Value{}).Elem())
+	if err != nil || val != True {
+		t.Error("Error during conversion to ref.Value type", err, val)
 	}
 }
 

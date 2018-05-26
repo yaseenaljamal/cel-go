@@ -77,9 +77,18 @@ func (i Int) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
 				Kind: &structpb.Value_NumberValue{
 					NumberValue: float64(i)}}, nil
 		}
-	}
-	if reflect.TypeOf(i).AssignableTo(typeDesc) {
-		return i, nil
+		switch typeDesc.Elem().Kind() {
+		case reflect.Int32:
+			ptr := int32(i)
+			return &ptr, nil
+		case reflect.Int64:
+			ptr := int64(i)
+			return &ptr, nil
+		}
+	case reflect.Interface:
+		if reflect.TypeOf(i).Implements(typeDesc) {
+			return i, nil
+		}
 	}
 	return nil, fmt.Errorf("unsupported type conversion from 'int' to %v", typeDesc)
 }

@@ -77,26 +77,28 @@ func (l *baseList) Contains(elem ref.Value) ref.Value {
 func (l *baseList) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
 	// JSON conversions are a special case since the 'native' type in this case
 	// actually a protocol buffer message rather than a list.
-	if typeDesc == jsonValueType || typeDesc == jsonListValueType {
-		jsonValues, err :=
-			l.ConvertToNative(reflect.TypeOf([]*structpb.Value{}))
-		if err != nil {
-			return nil, err
+	switch typeDesc.Kind() {
+	case reflect.Ptr:
+		if typeDesc == jsonValueType || typeDesc == jsonListValueType {
+			jsonValues, err :=
+				l.ConvertToNative(reflect.TypeOf([]*structpb.Value{}))
+			if err != nil {
+				return nil, err
+			}
+			jsonList := &structpb.ListValue{Values: jsonValues.([]*structpb.Value)}
+			if typeDesc == jsonListValueType {
+				return jsonList, nil
+			}
+			return &structpb.Value{Kind: &structpb.Value_ListValue{ListValue: jsonList}}, nil
 		}
-		jsonList := &structpb.ListValue{Values: jsonValues.([]*structpb.Value)}
-		if typeDesc == jsonListValueType {
-			return jsonList, nil
+	case reflect.Interface:
+		// If the list is already assignable to the desired type return it.
+		if reflect.TypeOf(l).Implements(typeDesc) {
+			return l, nil
 		}
-		return &structpb.Value{Kind: &structpb.Value_ListValue{ListValue: jsonList}}, nil
-	}
-
-	// If the list is already assignable to the desired type return it.
-	if reflect.TypeOf(l).AssignableTo(typeDesc) {
-		return l, nil
-	}
-
-	// Non-list conversion.
-	if typeDesc.Kind() != reflect.Slice && typeDesc.Kind() != reflect.Array {
+	case reflect.Slice, reflect.Array:
+		// fall-through
+	default:
 		return nil, fmt.Errorf("type conversion error from list to '%v'", typeDesc)
 	}
 
@@ -340,11 +342,12 @@ func (l *stringList) ConvertToNative(typeDesc reflect.Type) (interface{}, error)
 				Kind: &structpb.Value_ListValue{
 					ListValue: jsonList}}, nil
 		}
+	case reflect.Interface:
+		if reflect.TypeOf(l).Implements(typeDesc) {
+			return l, nil
+		}
 	}
-	// If the list is already assignable to the desired type return it.
-	if reflect.TypeOf(l).AssignableTo(typeDesc) {
-		return l, nil
-	}
+
 	return nil, fmt.Errorf("no conversion found from list type to native type."+
 		" list elem: string, native type: %v", typeDesc)
 }
