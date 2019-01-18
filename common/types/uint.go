@@ -45,7 +45,7 @@ const (
 // Add implements traits.Adder.Add.
 func (i Uint) Add(other ref.Value) ref.Value {
 	if UintType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return i + other.(Uint)
 }
@@ -53,7 +53,7 @@ func (i Uint) Add(other ref.Value) ref.Value {
 // Compare implements traits.Comparer.Compare.
 func (i Uint) Compare(other ref.Value) ref.Value {
 	if UintType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	if i < other.(Uint) {
 		return IntNegOne
@@ -114,7 +114,7 @@ func (i Uint) ConvertToType(typeVal ref.Type) ref.Value {
 // Divide implements traits.Divider.Divide.
 func (i Uint) Divide(other ref.Value) ref.Value {
 	if UintType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	otherUint := other.(Uint)
 	if otherUint == uintZero {
@@ -131,7 +131,7 @@ func (i Uint) Equal(other ref.Value) ref.Value {
 // Modulo implements traits.Modder.Modulo.
 func (i Uint) Modulo(other ref.Value) ref.Value {
 	if UintType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	otherUint := other.(Uint)
 	if otherUint == uintZero {
@@ -143,7 +143,7 @@ func (i Uint) Modulo(other ref.Value) ref.Value {
 // Multiply implements traits.Multiplier.Multiply.
 func (i Uint) Multiply(other ref.Value) ref.Value {
 	if UintType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return i * other.(Uint)
 }
@@ -151,7 +151,7 @@ func (i Uint) Multiply(other ref.Value) ref.Value {
 // Subtract implements traits.Subtractor.Subtract.
 func (i Uint) Subtract(subtrahend ref.Value) ref.Value {
 	if UintType != subtrahend.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(subtrahend, "unsupported overload")
 	}
 	return i - subtrahend.(Uint)
 }

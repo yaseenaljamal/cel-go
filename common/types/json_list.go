@@ -41,7 +41,7 @@ func NewJSONList(l *structpb.ListValue) traits.Lister {
 
 func (l *jsonListValue) Add(other ref.Value) ref.Value {
 	if other.Type() != ListType {
-		return NewErr("no such overload")
+		return ValOrErr(other, "no such overload")
 	}
 	switch other.(type) {
 	case *jsonListValue:
@@ -130,7 +130,7 @@ func (l *jsonListValue) Equal(other ref.Value) ref.Value {
 
 func (l *jsonListValue) Get(index ref.Value) ref.Value {
 	if IntType != index.Type() {
-		return NewErr("unsupported index type: '%v", index.Type())
+		return ValOrErr(index, "unsupported index type: '%v", index.Type())
 	}
 	i := index.(Int)
 	if i < 0 || i >= l.Size().(Int) {

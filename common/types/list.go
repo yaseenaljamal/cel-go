@@ -63,7 +63,7 @@ type baseList struct {
 
 func (l *baseList) Add(other ref.Value) ref.Value {
 	if other.Type() != ListType {
-		return NewErr("no such overload")
+		return ValOrErr(other, "no such overload")
 	}
 	if l.Size() == IntZero {
 		return other
@@ -166,7 +166,7 @@ func (l *baseList) Equal(other ref.Value) ref.Value {
 
 func (l *baseList) Get(index ref.Value) ref.Value {
 	if index.Type() != IntType {
-		return NewErr("unsupported index type '%s' in list", index.Type())
+		return ValOrErr(index, "unsupported index type '%s' in list", index.Type())
 	}
 	i := index.(Int)
 	if i < 0 || i >= l.Size().(Int) {
@@ -205,7 +205,7 @@ type concatList struct {
 
 func (l *concatList) Add(other ref.Value) ref.Value {
 	if other.Type() != ListType {
-		return NewErr("no such overload")
+		return ValOrErr(other, "no such overload")
 	}
 	if l.Size() == IntZero {
 		return other
@@ -260,7 +260,7 @@ func (l *concatList) Equal(other ref.Value) ref.Value {
 
 func (l *concatList) Get(index ref.Value) ref.Value {
 	if index.Type() != IntType {
-		return NewErr("unsupported index type '%s' in list", index.Type())
+		return ValOrErr(index, "unsupported index type '%s' in list", index.Type())
 	}
 	i := index.(Int)
 	if i < l.prevList.Size().(Int) {
@@ -312,7 +312,7 @@ type stringList struct {
 
 func (l *stringList) Add(other ref.Value) ref.Value {
 	if other.Type() != ListType {
-		return NewErr("no such overload")
+		return ValOrErr(other, "no such overload")
 	}
 	if l.Size() == IntZero {
 		return other
@@ -363,7 +363,7 @@ func (l *stringList) ConvertToNative(typeDesc reflect.Type) (interface{}, error)
 
 func (l *stringList) Get(index ref.Value) ref.Value {
 	if index.Type() != IntType {
-		return NewErr("unsupported index type '%s' in list", index.Type())
+		return ValOrErr(index, "unsupported index type '%s' in list", index.Type())
 	}
 	i := index.(Int)
 	if i < 0 || i >= l.Size().(Int) {
@@ -384,7 +384,7 @@ type valueList struct {
 
 func (l *valueList) Add(other ref.Value) ref.Value {
 	if other.Type() != ListType {
-		return NewErr("no such overload")
+		return ValOrErr(other, "no such overload")
 	}
 	return &concatList{
 		prevList: l,
@@ -405,7 +405,7 @@ func (l *valueList) ConvertToNative(typeDesc reflect.Type) (interface{}, error) 
 
 func (l *valueList) Get(index ref.Value) ref.Value {
 	if index.Type() != IntType {
-		return NewErr("unsupported index type '%s' in list", index.Type())
+		return ValOrErr(index, "unsupported index type '%s' in list", index.Type())
 	}
 	i := index.(Int)
 	if i < 0 || i >= l.Size().(Int) {

@@ -43,7 +43,7 @@ var (
 // Compare implements traits.Comparer.Compare.
 func (b Bool) Compare(other ref.Value) ref.Value {
 	if BoolType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	otherBool := other.(Bool)
 	if b == otherBool {

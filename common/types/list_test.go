@@ -188,7 +188,7 @@ func TestConcatList_ConvertToNative_Json(t *testing.T) {
 	listB := NewDynamicList([]string{"3"})
 	list := listA.Add(listB)
 	json, err := list.ConvertToNative(jsonValueType)
-	if err != nil || IsError(json) {
+	if err != nil {
 		t.Errorf("Got '%v', expected '%v'", err, json)
 	}
 	jsonTxt, err := (&jsonpb.Marshaler{}).MarshalToString(json.(proto.Message))
@@ -353,7 +353,7 @@ func TestStringList_ConvertToNative_Error(t *testing.T) {
 func TestStringList_ConvertToNative_Json(t *testing.T) {
 	list := NewStringList([]string{"h", "e", "l", "p"})
 	json, err := list.ConvertToNative(jsonValueType)
-	if err != nil || IsError(json) {
+	if err != nil {
 		t.Errorf("Got '%v', expected '%v'", err, json)
 	}
 	jsonTxt, err := (&jsonpb.Marshaler{}).MarshalToString(json.(proto.Message))
@@ -365,7 +365,7 @@ func TestStringList_ConvertToNative_Json(t *testing.T) {
 	}
 
 	jsonList, err := list.ConvertToNative(jsonListValueType)
-	if err != nil || IsError(jsonList) {
+	if err != nil {
 		t.Errorf("Got '%v', expected '%v'", err, jsonList)
 	}
 	jsonListTxt, err := (&jsonpb.Marshaler{}).MarshalToString(jsonList.(proto.Message))

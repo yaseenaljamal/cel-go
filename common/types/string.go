@@ -44,7 +44,7 @@ var (
 // Add implements traits.Adder.Add.
 func (s String) Add(other ref.Value) ref.Value {
 	if StringType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return s + other.(String)
 }
@@ -52,7 +52,7 @@ func (s String) Add(other ref.Value) ref.Value {
 // Compare implements traits.Comparer.Compare.
 func (s String) Compare(other ref.Value) ref.Value {
 	if StringType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return Int(strings.Compare(s.Value().(string), other.Value().(string)))
 }
@@ -128,7 +128,7 @@ func (s String) Equal(other ref.Value) ref.Value {
 // Match implements traits.Matcher.Match.
 func (s String) Match(pattern ref.Value) ref.Value {
 	if pattern.Type() != StringType {
-		return NewErr("unsupported overload")
+		return ValOrErr(pattern, "unsupported overload")
 	}
 	matched, err := regexp.MatchString(pattern.Value().(string), s.Value().(string))
 	if err != nil {

@@ -73,13 +73,13 @@ func (d Duration) Add(other ref.Value) ref.Value {
 		}
 		return Timestamp{tstamp}
 	}
-	return NewErr("unsupported overload")
+	return ValOrErr(other, "unsupported overload")
 }
 
 // Compare implements traits.Comparer.Compare.
 func (d Duration) Compare(other ref.Value) ref.Value {
 	if DurationType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	dur1, err := ptypes.Duration(d.Duration)
 	if err != nil {
@@ -163,7 +163,7 @@ func (d Duration) Receive(function string, overload string, args []ref.Value) re
 // Subtract implements traits.Subtractor.Subtract.
 func (d Duration) Subtract(subtrahend ref.Value) ref.Value {
 	if DurationType != subtrahend.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(subtrahend, "unsupported overload")
 	}
 	return d.Add(subtrahend.(Duration).Negate())
 }

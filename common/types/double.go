@@ -41,7 +41,7 @@ var (
 // Add implements traits.Adder.Add.
 func (d Double) Add(other ref.Value) ref.Value {
 	if DoubleType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return d + other.(Double)
 }
@@ -49,7 +49,7 @@ func (d Double) Add(other ref.Value) ref.Value {
 // Compare implements traits.Comparer.Compare.
 func (d Double) Compare(other ref.Value) ref.Value {
 	if DoubleType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	if d < other.(Double) {
 		return IntNegOne
@@ -109,7 +109,7 @@ func (d Double) ConvertToType(typeVal ref.Type) ref.Value {
 // Divide implements traits.Divider.Divide.
 func (d Double) Divide(other ref.Value) ref.Value {
 	if DoubleType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	if other.(Double) == Double(0) {
 		return NewErr("divide by zero")
@@ -125,7 +125,7 @@ func (d Double) Equal(other ref.Value) ref.Value {
 // Multiply implements traits.Multiplier.Multiply.
 func (d Double) Multiply(other ref.Value) ref.Value {
 	if DoubleType != other.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(other, "unsupported overload")
 	}
 	return d * other.(Double)
 }
@@ -138,7 +138,7 @@ func (d Double) Negate() ref.Value {
 // Subtract implements traits.Subtractor.Subtract.
 func (d Double) Subtract(subtrahend ref.Value) ref.Value {
 	if DoubleType != subtrahend.Type() {
-		return NewErr("unsupported overload")
+		return ValOrErr(subtrahend, "unsupported overload")
 	}
 	return d - subtrahend.(Double)
 }

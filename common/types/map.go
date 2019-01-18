@@ -43,7 +43,7 @@ var (
 )
 
 func (m *baseMap) Contains(index ref.Value) ref.Value {
-	return !Bool(IsError(m.Get(index).Type()))
+	return Bool(m.Get(index).Type() != ErrType)
 }
 
 func (m *baseMap) ConvertToNative(refType reflect.Type) (interface{}, error) {
@@ -125,9 +125,9 @@ func (m *baseMap) Equal(other ref.Value) ref.Value {
 	it := m.Iterator()
 	for it.HasNext() == True {
 		key := it.Next()
-		if otherVal := otherMap.Get(key); IsError(otherVal.Type()) {
+		if otherVal := otherMap.Get(key); IsError(otherVal) {
 			return False
-		} else if thisVal := m.Get(key); IsError(thisVal.Type()) {
+		} else if thisVal := m.Get(key); IsError(thisVal) {
 			return False
 		} else if thisVal.Equal(otherVal) != True {
 			return False

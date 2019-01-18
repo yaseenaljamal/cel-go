@@ -75,59 +75,63 @@ func (d *defaultDispatcher) Add(overloads ...*functions.Overload) error {
 func (d *defaultDispatcher) Dispatch(state []ref.Value, call *CallExpr) {
 	function := call.Function
 	argCount := len(call.Args)
-	if overload, found := d.overloads[function]; found {
+	overload, found := d.overloads[function]
+	// Attempt to resolve the function as a receiver method.
+	if !found {
+		// Special dispatch for type-specific extension functions.
 		if argCount == 0 {
-			state[call.ID] = overload.Function()
-			return
-		}
-		arg0 := state[call.Args[0]]
-		if !arg0.Type().HasTrait(overload.OperandTrait) {
+			// If we're here, then there wasn't a zero-arg global function,
+			// and there's definitely no member function without an operand.
 			state[call.ID] = types.NewErr("no such overload")
 			return
 		}
-		switch argCount {
-		case 1:
-			state[call.ID] = overload.Unary(arg0)
-			return
-		case 2:
-			arg1 := state[call.Args[1]]
-			state[call.ID] = overload.Binary(arg0, arg1)
-			return
-		case 3:
-			arg1 := state[call.Args[1]]
-			arg2 := state[call.Args[2]]
-			state[call.ID] = overload.Function(arg0, arg1, arg2)
-			return
-		default:
-			args := make([]ref.Value, argCount, argCount)
+		arg0 := state[call.Args[0]]
+		if arg0.Type().HasTrait(traits.ReceiverType) {
+			overload := call.Overload
+			args := make([]ref.Value, argCount-1, argCount-1)
 			for i, argID := range call.Args {
+				if i == 0 {
+					continue
+				}
 				args[i] = state[argID]
 			}
-			state[call.ID] = overload.Function(args...)
+			state[call.ID] = arg0.(traits.Receiver).Receive(function, overload, args)
 			return
 		}
+		state[call.ID] = types.ValOrErr(arg0, "no such overload")
+		return
 	}
-	// Special dispatch for type-specific extension functions.
+	// Attempt to invoke a global overload.
 	if argCount == 0 {
-		// If we're here, then there wasn't a zero-arg global function,
-		// and there's definitely no member function without an operand.
-		state[call.ID] = types.NewErr("no such overload")
+		state[call.ID] = overload.Function()
 		return
 	}
 	arg0 := state[call.Args[0]]
-	if arg0.Type().HasTrait(traits.ReceiverType) {
-		overload := call.Overload
-		args := make([]ref.Value, argCount-1, argCount-1)
-		for i, argID := range call.Args {
-			if i == 0 {
-				continue
-			}
-			args[i] = state[argID]
-		}
-		state[call.ID] = arg0.(traits.Receiver).Receive(function, overload, args)
+	if !arg0.Type().HasTrait(overload.OperandTrait) {
+		state[call.ID] = types.ValOrErr(arg0, "no such overload")
 		return
 	}
-	state[call.ID] = types.NewErr("no such overload")
+	switch argCount {
+	case 1:
+		state[call.ID] = overload.Unary(arg0)
+		return
+	case 2:
+		arg1 := state[call.Args[1]]
+		state[call.ID] = overload.Binary(arg0, arg1)
+		return
+	case 3:
+		arg1 := state[call.Args[1]]
+		arg2 := state[call.Args[2]]
+		state[call.ID] = overload.Function(arg0, arg1, arg2)
+		return
+	default:
+		args := make([]ref.Value, argCount, argCount)
+		for i, argID := range call.Args {
+			args[i] = state[argID]
+		}
+		state[call.ID] = overload.Function(args...)
+		return
+	}
 }
 
 // FindOverload implements the Dispatcher.FindOverload interface method.
