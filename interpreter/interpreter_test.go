@@ -232,7 +232,7 @@ func TestInterpreter_FieldAccess(t *testing.T) {
 }
 
 func TestInterpreter_ExistsOne(t *testing.T) {
-	result, _ := evalExpr(t, "[1, 2, 3].exists_one(x, x % 2 == 0)")
+	result, _ := evalExpr(t, "[1, 2, 3].exists_one(x, (x % 2) == 0)")
 	if result != types.True {
 		t.Errorf("Got %v, wanted true", result)
 	}
@@ -694,9 +694,34 @@ var (
 			},
 		},
 		{
+			name: `ExprBench/false_1st`,
+			E:    `false && true`,
+			I:    map[string]interface{}{},
+		},
+		{
 			name: `ExprBench/false_2nd`,
 			E:    `true && false`,
 			I:    map[string]interface{}{},
+		},
+		{
+			name: `ExprBench/ok_lhs`,
+			E:    `ai == 20 `,
+			I: map[string]interface{}{
+				"ai": 20,
+				"ar": map[string]string{
+					"foo": "bar",
+				},
+			},
+		},
+		{
+			name: `ExprBench/ok_rhs`,
+			E:    `ar["foo"] == "bar"`,
+			I: map[string]interface{}{
+				"ai": 2,
+				"ar": map[string]string{
+					"foo": "baz",
+				},
+			},
 		},
 	}
 )

@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/interpreter/functions"
 )
 
 // Instruction represents a single step within a CEL program.
@@ -76,6 +77,7 @@ type CallExpr struct {
 	Args     []int64
 	Overload string
 	Strict   bool
+	Impl     *functions.Overload
 }
 
 // String generates pseudo-assembly for the instruction.
@@ -92,12 +94,22 @@ func (e *CallExpr) String() string {
 
 // NewCall generates a CallExpr for non-overload calls.
 func NewCall(exprID int64, function string, argIDs []int64) *CallExpr {
-	return &CallExpr{&baseInstruction{exprID}, function, argIDs, "", checkIsStrict(function)}
+	return &CallExpr{
+		baseInstruction: &baseInstruction{exprID},
+		Function:        function,
+		Args:            argIDs,
+		Overload:        "",
+		Strict:          checkIsStrict(function)}
 }
 
 // NewCallOverload generates a CallExpr for overload calls.
 func NewCallOverload(exprID int64, function string, argIDs []int64, overload string) *CallExpr {
-	return &CallExpr{&baseInstruction{exprID}, function, argIDs, overload, checkIsStrict(function)}
+	return &CallExpr{
+		baseInstruction: &baseInstruction{exprID},
+		Function:        function,
+		Args:            argIDs,
+		Overload:        overload,
+		Strict:          checkIsStrict(function)}
 }
 
 func checkIsStrict(function string) bool {

@@ -153,8 +153,11 @@ func (w *astWalker) walkCall(node *exprpb.Expr) []Instruction {
 			instructions = append(instructions, argGroup...)
 			if i != argCount-1 && w.shortCircuit {
 				instructions = append(instructions,
-					NewJump(argIDs[i], instructionCount-evalCount,
-						jumpIfEqual(argIDs[i], types.Bool(function == operators.LogicalOr))))
+					NewJump(argIDs[i], instructionCount-evalCount+1,
+						setAndJumpIfEqual(
+							argIDs[i],
+							types.Bool(function == operators.LogicalOr),
+							node.Id)))
 				evalCount++
 			}
 		}
@@ -480,11 +483,24 @@ func jumpIfUnknownOrError(exprID int64) func([]ref.Value) bool {
 func breakIfEnd(conditionID int64) func([]ref.Value) bool {
 	return func(s []ref.Value) bool {
 		if val := s[conditionID]; val != nil {
-			return val == types.False ||
-				types.IsUnknown(val) ||
-				types.IsError(val)
+			return val == types.False || types.IsUnknownOrError(val)
 		}
 		return true
+	}
+}
+
+func setAndJumpIfEqual(exprID int64, value ref.Value, resID int64) func([]ref.Value) bool {
+	return func(s []ref.Value) bool {
+		val := s[exprID]
+		if val == nil {
+			return false
+		}
+		lBool, ok := val.(types.Bool)
+		if ok && lBool == value.(types.Bool) {
+			s[resID] = value
+			return true
+		}
+		return false
 	}
 }
 

@@ -74,10 +74,14 @@ func (d *defaultDispatcher) Add(overloads ...*functions.Overload) error {
 // Dispatcher implements the Dispatcher.Dispatch interface method.
 func (d *defaultDispatcher) Dispatch(state []ref.Value, call *CallExpr) {
 	function := call.Function
+	impl := call.Impl
+	if impl == nil {
+		impl = d.overloads[function]
+	}
 	argCount := len(call.Args)
-	overload, found := d.overloads[function]
+
 	// Attempt to resolve the function as a receiver method.
-	if !found {
+	if impl == nil {
 		// Special dispatch for type-specific extension functions.
 		if argCount == 0 {
 			// If we're here, then there wasn't a zero-arg global function,
@@ -101,35 +105,36 @@ func (d *defaultDispatcher) Dispatch(state []ref.Value, call *CallExpr) {
 		state[call.ID] = types.ValOrErr(arg0, "no such overload")
 		return
 	}
+
 	// Attempt to invoke a global overload.
 	if argCount == 0 {
-		state[call.ID] = overload.Function()
+		state[call.ID] = impl.Function()
 		return
 	}
 	arg0 := state[call.Args[0]]
-	if !arg0.Type().HasTrait(overload.OperandTrait) {
+	if impl.OperandTrait != 0 && !arg0.Type().HasTrait(impl.OperandTrait) {
 		state[call.ID] = types.ValOrErr(arg0, "no such overload")
 		return
 	}
 	switch argCount {
 	case 1:
-		state[call.ID] = overload.Unary(arg0)
+		state[call.ID] = impl.Unary(arg0)
 		return
 	case 2:
 		arg1 := state[call.Args[1]]
-		state[call.ID] = overload.Binary(arg0, arg1)
+		state[call.ID] = impl.Binary(arg0, arg1)
 		return
 	case 3:
 		arg1 := state[call.Args[1]]
 		arg2 := state[call.Args[2]]
-		state[call.ID] = overload.Function(arg0, arg1, arg2)
+		state[call.ID] = impl.Function(arg0, arg1, arg2)
 		return
 	default:
 		args := make([]ref.Value, argCount, argCount)
 		for i, argID := range call.Args {
 			args[i] = state[argID]
 		}
-		state[call.ID] = overload.Function(args...)
+		state[call.ID] = impl.Function(args...)
 		return
 	}
 }

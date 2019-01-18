@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/common/overloads"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
@@ -48,6 +50,7 @@ type Program struct {
 	refMap          map[int64]*exprpb.Reference
 	revInstructions map[int64]int
 	flags           programFlag
+	resultID        int64
 }
 
 // NewCheckedProgram creates a Program from a checked CEL expression.
@@ -91,11 +94,133 @@ func (p *Program) GetInstruction(runtimeID int64) Instruction {
 func (p *Program) plan(state *evalState) {
 	if p.Instructions == nil {
 		shortcircuit := p.flags&programFlagNoShortCircuit == 0
-		p.Instructions = WalkExpr(p.expression, p.metadata, state, shortcircuit)
+		p.resultID = p.expression.Id
+		p.Instructions = WalkExpr(
+			p.expression,
+			p.metadata,
+			state,
+			shortcircuit)
 		for i, inst := range p.Instructions {
 			p.revInstructions[inst.GetID()] = i
 		}
 	}
+}
+
+// bindOperators iterates over the instruction set attempting to resolve function
+// names to implementation references within the instruction set.
+func (p *Program) bindOperators(disp Dispatcher) {
+	if p.Instructions != nil {
+		for _, inst := range p.Instructions {
+			call, found := inst.(*CallExpr)
+			if !found {
+				continue
+			}
+			fn, found := disp.FindOverload(call.Function)
+			if !found {
+				continue
+			}
+			call.Impl = fn
+		}
+	}
+}
+
+// computeConstExprs iterates over the instruction set attempting to resolve function
+// names to implementation references within the instruction set.
+func (p *Program) computeConstExprs(state *evalState) {
+	instructions := p.Instructions
+	if instructions == nil {
+		return
+	}
+	// Accumulate a list of instructions which are now constant values.
+	var constInsts []int
+	var nested int
+	for i, inst := range instructions {
+		switch inst.(type) {
+		case *PushScopeInst:
+			nested++
+		case *PopScopeInst:
+			nested--
+		case *CallExpr:
+			if nested != 0 {
+				continue
+			}
+			call := inst.(*CallExpr)
+			if p.maybeComputeConstCall(call, state) {
+				switch call.Function {
+				case operators.LogicalAnd, operators.LogicalOr:
+					// remove the jump condition when both args are constant.
+					constInsts = append(constInsts, i-1)
+				}
+				constInsts = append(constInsts, i)
+			}
+		}
+	}
+	// If no constant expressions were encountered, return.
+	constInstsCnt := len(constInsts)
+	if constInstsCnt == 0 {
+		return
+	}
+
+	// Otherwise, copy non-const instructions into an new list.
+	optInstsCnt := len(instructions) - constInstsCnt
+	optInsts := make([]Instruction, optInstsCnt, optInstsCnt)
+	i := 0
+	oi := 0
+	for _, j := range constInsts {
+		for i < j {
+			optInsts[oi] = instructions[i]
+			oi++
+			i++
+		}
+		i = j + 1
+	}
+	for oi < optInstsCnt {
+		optInsts[oi] = instructions[i]
+		oi++
+		i++
+	}
+	p.Instructions = optInsts
+	// Iterate until there are no more const expressions left.
+	p.computeConstExprs(state)
+}
+
+func (p *Program) maybeComputeConstCall(call *CallExpr, state *evalState) bool {
+	// Skip functions without an implementation.
+	if call.Impl == nil {
+		return false
+	}
+	switch call.Function {
+	case operators.NotStrictlyFalse,
+		operators.OldNotStrictlyFalse,
+		overloads.Iterator,
+		overloads.HasNext,
+		overloads.Next:
+		return false
+	}
+	switch len(call.Args) {
+	case 1:
+		arg0 := state.values[call.Args[0]]
+		if arg0 == nil {
+			return false
+		}
+		if call.Impl.OperandTrait != 0 && !arg0.Type().HasTrait(call.Impl.OperandTrait) {
+			return false
+		}
+		state.values[call.ID] = call.Impl.Unary(arg0)
+		return true
+	case 2:
+		arg0 := state.values[call.Args[0]]
+		arg1 := state.values[call.Args[1]]
+		if arg0 == nil || arg1 == nil {
+			return false
+		}
+		if call.Impl.OperandTrait != 0 && !arg0.Type().HasTrait(call.Impl.OperandTrait) {
+			return false
+		}
+		state.values[call.ID] = call.Impl.Binary(arg0, arg1)
+		return true
+	}
+	return false
 }
 
 // MaxInstructionID returns the identifier of the last expression in the

@@ -76,6 +76,8 @@ func (i *exprInterpreter) NewInterpretable(program *Program) Interpretable {
 		packager:     i.packager,
 		typeProvider: i.typeProvider}
 	program.plan(staticState)
+	program.bindOperators(i.dispatcher)
+	program.computeConstExprs(staticState)
 	statePool := &sync.Pool{
 		New: func() interface{} {
 			runtimeState := make([]ref.Value, staticState.exprCount, staticState.exprCount)
@@ -133,24 +135,26 @@ func (i *exprInterpretable) finalizeState(state []ref.Value) *evalState {
 func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 	// register machine-like evaluation of the program with the given activation.
 	currActivation := activation
+	d := i.interpreter.dispatcher
 
-	// program counter, and execution state.
+	// program counter and execution state.
 	pc := 0
 	end := len(i.program.Instructions)
 	steps := i.program.Instructions
+	if pc == end {
+		return i.staticState.values[i.program.resultID], i.staticState
+	}
 	state := i.allocState()
 
-	var resultID int64 = 1
 	for pc < end {
 		step := steps[pc]
-		resultID = step.GetID()
 		switch step.(type) {
 		case *IdentExpr:
 			i.evalIdent(state, step.(*IdentExpr), currActivation)
 		case *SelectExpr:
 			i.evalSelect(state, step.(*SelectExpr), currActivation)
 		case *CallExpr:
-			i.evalCall(state, step.(*CallExpr))
+			d.Dispatch(state, step.(*CallExpr))
 		case *CreateListExpr:
 			i.evalCreateList(state, step.(*CreateListExpr))
 		case *CreateMapExpr:
@@ -164,7 +168,7 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 			jmpExpr := step.(*JumpInst)
 			if jmpExpr.OnCondition(state) {
 				jmpPc := pc + jmpExpr.Count
-				if jmpPc < 0 || jmpPc >= end {
+				if jmpPc < 0 || jmpPc > end {
 					// TODO: Error, the jump count should never exceed the
 					// program length.
 					panic("jumped too far")
@@ -189,7 +193,7 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 		}
 		pc++
 	}
-	result := i.value(state, resultID)
+	result := i.value(state, i.program.resultID)
 	return result, i.finalizeState(state)
 }
 
@@ -199,11 +203,13 @@ func (i *exprInterpretable) evalIdent(state []ref.Value,
 	// TODO: Refactor this code for sharing.
 	if result, found := currActivation.ResolveName(idExpr.Name); found {
 		state[idExpr.ID] = result
-	} else if idVal, found := i.interpreter.typeProvider.FindIdent(idExpr.Name); found {
-		state[idExpr.ID] = idVal
-	} else {
-		state[idExpr.ID] = types.Unknown{idExpr.ID}
+		return
 	}
+	if idVal, found := i.interpreter.typeProvider.FindIdent(idExpr.Name); found {
+		state[idExpr.ID] = idVal
+		return
+	}
+	state[idExpr.ID] = types.Unknown{idExpr.ID}
 }
 
 func (i *exprInterpretable) evalSelect(state []ref.Value,
@@ -293,12 +299,6 @@ func (i *exprInterpretable) resolveUnknown(state []ref.Value,
 		}
 	}
 	return append(types.Unknown{selExpr.ID}, unknown...)
-}
-
-func (i *exprInterpretable) evalCall(
-	state []ref.Value,
-	callExpr *CallExpr) {
-	i.interpreter.dispatcher.Dispatch(state, callExpr)
 }
 
 func (i *exprInterpretable) evalCreateList(state []ref.Value,

@@ -100,7 +100,17 @@ func TestNewProgram_LogicalOr(t *testing.T) {
 	}
 	state := newEvalState(program.MaxInstructionID() + 1)
 	program.plan(state)
-	fmt.Printf("%s\n%s\n\n", t.Name(), program)
+	//  "{c: false}.c || a"
+	expected := `TestNewProgram_LogicalOr
+0: mov   map(map[6:7]), r5
+1: call  select(5, 'c'), r8
+2: jump  3 if cond<r8>
+3: local 'a', r1
+4: call  _||_(r8, r1), r2`
+	actual := fmt.Sprintf("%s\n%s", t.Name(), program)
+	if actual != expected {
+		t.Errorf("Got '%s', wanted '%s'", actual, expected)
+	}
 }
 
 func TestNewProgram_Conditional(t *testing.T) {
