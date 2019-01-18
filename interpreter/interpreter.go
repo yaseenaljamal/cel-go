@@ -190,22 +190,6 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 		pc++
 	}
 	result := i.value(state, resultID)
-<<<<<<< HEAD
-=======
-	// if result == nil {
-	// 	cnt := 0
-	// 	var only ref.Value
-	// 	for _, v := range state {
-	// 		if v != nil {
-	// 			only = v
-	// 			cnt++
-	// 		}
-	// 	}
-	// 	if cnt == 1 {
-	// 		result = only
-	// 	}
-	// }
->>>>>>> Switch from pessimistic error checks to optimistically valued checks.
 	return result, i.finalizeState(state)
 }
 
