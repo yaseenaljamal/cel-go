@@ -21,6 +21,8 @@ import (
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/overloads"
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
@@ -37,10 +39,59 @@ const (
 	// evaluated during program execution.
 	programFlagNoShortCircuit programFlag = 2
 
+	// programFlagOptimize enables the binding of functions to instructions and the eval
+	// of expressions whose arguments are comprised of constant values.
+	programFlagOptimize programFlag = 4
+
 	// programFlagExhaustive combines the state tracking and no-short-curcuit flags.
 	programFlagExhaustive programFlag = programFlagTrackState |
 		programFlagNoShortCircuit
 )
+
+// ProgramOption is a functional interface for configuring optional program features.
+type ProgramOption func(*Program) (*Program, error)
+
+// ExhaustiveProgram is a ProgramOption which sets or unsets a flag which dictates
+// exhaustive evaluation.
+func ExhaustiveProgram(enabled bool) ProgramOption {
+	return func(p *Program) (*Program, error) {
+		exhaustiveFlag := programFlagNoShortCircuit | programFlagTrackState
+		if enabled {
+			p.flags |= exhaustiveFlag
+		} else if p.flags&exhaustiveFlag == exhaustiveFlag {
+			p.flags ^= exhaustiveFlag
+		}
+		return p, nil
+	}
+}
+
+// OptimizeProgram is a ProgramOption which sets or unsets a flag that determines
+// whether the program optimization steps should be performed during the creation
+// of a new `Interpretable`.
+func OptimizeProgram(enabled bool) ProgramOption {
+	return func(p *Program) (*Program, error) {
+		if enabled {
+			p.flags |= programFlagOptimize
+		} else if p.flags&programFlagOptimize == programFlagOptimize {
+			p.flags ^= programFlagOptimize
+		}
+		return p, nil
+	}
+}
+
+// TrackProgramState is a ProgramOption which sets or unsets a flag that determines
+// whether runtime state is tracked during execution and returned to the caller
+// with the evaluation result.
+func TrackProgramState(enabled bool) ProgramOption {
+	return func(p *Program) (*Program, error) {
+		if enabled {
+			p.flags |= programFlagTrackState
+		} else if p.flags&programFlagTrackState == programFlagTrackState {
+			p.flags ^= programFlagTrackState
+		}
+		return p, nil
+	}
+}
 
 // Program contains instructions and related metadata.
 type Program struct {
@@ -54,39 +105,63 @@ type Program struct {
 }
 
 // NewCheckedProgram creates a Program from a checked CEL expression.
-func NewCheckedProgram(c *exprpb.CheckedExpr) *Program {
+func NewCheckedProgram(c *exprpb.CheckedExpr, opts ...ProgramOption) (*Program, error) {
 	// TODO: take advantage of the type-check information.
-	return NewProgram(c.Expr, c.SourceInfo)
+	return NewProgram(c.Expr, c.SourceInfo, opts...)
 }
 
 // NewProgram creates a Program from a CEL expression and source information.
 func NewProgram(expression *exprpb.Expr,
-	info *exprpb.SourceInfo) *Program {
+	info *exprpb.SourceInfo,
+	opts ...ProgramOption) (*Program, error) {
 	revInstructions := make(map[int64]int)
-	return &Program{
+	p := &Program{
 		expression:      expression,
 		revInstructions: revInstructions,
 		metadata:        newExprMetadata(info),
 	}
-}
-
-// NewExhaustiveProgram creates a Program from a CEL expression and source
-// information which force evaluating all branches of the expression.
-func NewExhaustiveProgram(expression *exprpb.Expr,
-	// TODO: also disable short circuit in comprehensions.
-	info *exprpb.SourceInfo) *Program {
-	revInstructions := make(map[int64]int)
-	return &Program{
-		expression:      expression,
-		revInstructions: revInstructions,
-		metadata:        newExprMetadata(info),
-		flags:           programFlagExhaustive,
+	var err error
+	for _, opt := range opts {
+		p, err = opt(p)
+		if err != nil {
+			return nil, err
+		}
 	}
+	return p, nil
 }
 
 // GetInstruction returns the instruction at the given runtime expression id.
 func (p *Program) GetInstruction(runtimeID int64) Instruction {
 	return p.Instructions[p.revInstructions[runtimeID]]
+}
+
+// MaxInstructionID returns the identifier of the last expression in the
+// program.
+func (p *Program) MaxInstructionID() int64 {
+	// The max instruction id is the highest expression id in the program,
+	// plus the count of the internal variables allocated for comprehensions.
+	//
+	// A comprehension allocates an id for each of the following:
+	// - iterator
+	// - hasNext() result
+	// - iterVar
+	//
+	// The maxID is thus, the max input id + comprehension count * 3
+	return maxID(p.expression) + comprehensionCount(p.expression)*3
+}
+
+// Metadata used to determine source locations of sub-expressions.
+func (p *Program) Metadata() Metadata {
+	return p.metadata
+}
+
+// String returns an op-code like rendering of a Program as a string.
+func (p *Program) String() string {
+	instStrs := make([]string, len(p.Instructions), len(p.Instructions))
+	for i, inst := range p.Instructions {
+		instStrs[i] = fmt.Sprintf("%d: %v", i, inst)
+	}
+	return strings.Join(instStrs, "\n")
 }
 
 // plan ensures that instructions have been properly initialized prior to beginning the execution
@@ -124,8 +199,11 @@ func (p *Program) bindOperators(disp Dispatcher) {
 	}
 }
 
-// computeConstExprs iterates over the instruction set attempting to resolve function
-// names to implementation references within the instruction set.
+// computeConstExprs iterates over the instruction set attempting to compute constant
+// expressions such as list and map literals or calls whose arguments are all constants.
+//
+// This method is recursive and will continue until no instruction rewrites occur during a single
+// iteration.
 func (p *Program) computeConstExprs(state *evalState) {
 	instructions := p.Instructions
 	if instructions == nil {
@@ -136,10 +214,6 @@ func (p *Program) computeConstExprs(state *evalState) {
 	var nested int
 	for i, inst := range instructions {
 		switch inst.(type) {
-		case *PushScopeInst:
-			nested++
-		case *PopScopeInst:
-			nested--
 		case *CallExpr:
 			if nested != 0 {
 				continue
@@ -153,6 +227,21 @@ func (p *Program) computeConstExprs(state *evalState) {
 				}
 				constInsts = append(constInsts, i)
 			}
+		case *CreateListExpr:
+			createList := inst.(*CreateListExpr)
+			if p.maybeComputeListLiteral(createList, state) {
+				constInsts = append(constInsts, i)
+			}
+		case *CreateMapExpr:
+			createMap := inst.(*CreateMapExpr)
+			if p.maybeComputeMapLiteral(createMap, state) {
+				constInsts = append(constInsts, i)
+			}
+		// Skip call optimizations when in the midst of a comprehension.
+		case *PushScopeInst:
+			nested++
+		case *PopScopeInst:
+			nested--
 		}
 	}
 	// If no constant expressions were encountered, return.
@@ -180,15 +269,19 @@ func (p *Program) computeConstExprs(state *evalState) {
 		i++
 	}
 	p.Instructions = optInsts
+
 	// Iterate until there are no more const expressions left.
 	p.computeConstExprs(state)
 }
 
+// maybeComputeConstCall will attempt to compute a call result when all arguments to the call
+// are constant values.
 func (p *Program) maybeComputeConstCall(call *CallExpr, state *evalState) bool {
 	// Skip functions without an implementation.
 	if call.Impl == nil {
 		return false
 	}
+	// Skip internal functions.
 	switch call.Function {
 	case operators.NotStrictlyFalse,
 		operators.OldNotStrictlyFalse,
@@ -197,6 +290,8 @@ func (p *Program) maybeComputeConstCall(call *CallExpr, state *evalState) bool {
 		overloads.Next:
 		return false
 	}
+	// Currently only unary and binary functions with constant args may be called.
+	// TODO: Handle instruction rewrites for the conditional operator.
 	switch len(call.Args) {
 	case 1:
 		arg0 := state.values[call.Args[0]]
@@ -223,32 +318,40 @@ func (p *Program) maybeComputeConstCall(call *CallExpr, state *evalState) bool {
 	return false
 }
 
-// MaxInstructionID returns the identifier of the last expression in the
-// program.
-func (p *Program) MaxInstructionID() int64 {
-	// The max instruction id is the highest expression id in the program,
-	// plus the count of the internal variables allocated for comprehensions.
-	//
-	// A comprehension allocates an id for each of the following:
-	// - iterator
-	// - hasNext() result
-	// - iterVar
-	//
-	// The maxID is thus, the max input id + comprehension count * 3
-	return maxID(p.expression) + comprehensionCount(p.expression)*3
-}
-
-// Metadata used to determine source locations of sub-expressions.
-func (p *Program) Metadata() Metadata {
-	return p.metadata
-}
-
-func (p *Program) String() string {
-	instStrs := make([]string, len(p.Instructions), len(p.Instructions))
-	for i, inst := range p.Instructions {
-		instStrs[i] = fmt.Sprintf("%d: %v", i, inst)
+// maybeComputeListLiteral attempts to create a list value when the list creation is comprised entirely
+// of constant values.
+func (p *Program) maybeComputeListLiteral(createList *CreateListExpr, state *evalState) bool {
+	isConstExpr := true
+	for _, elemID := range createList.Elements {
+		isConstExpr = isConstExpr && state.values[elemID] != nil
 	}
-	return strings.Join(instStrs, "\n")
+	if !isConstExpr {
+		return false
+	}
+	listElems := make([]ref.Value, len(createList.Elements), len(createList.Elements))
+	for i, elemID := range createList.Elements {
+		listElems[i] = state.values[elemID]
+	}
+	state.values[createList.ID] = types.NewDynamicList(listElems)
+	return true
+}
+
+// maybeComputeMapLiteral attempts to create a map value when the map creation is comprised entirely
+// of constant values.
+func (p *Program) maybeComputeMapLiteral(createMap *CreateMapExpr, state *evalState) bool {
+	isConstExpr := true
+	for keyID, valID := range createMap.KeyValues {
+		isConstExpr = isConstExpr && state.values[keyID] != nil && state.values[valID] != nil
+	}
+	if !isConstExpr {
+		return false
+	}
+	keyValues := make(map[ref.Value]ref.Value)
+	for keyID, valID := range createMap.KeyValues {
+		keyValues[state.values[keyID]] = state.values[valID]
+	}
+	state.values[createMap.ID] = types.NewDynamicMap(keyValues)
+	return true
 }
 
 // The exprMetadata type provides helper functions for retrieving source

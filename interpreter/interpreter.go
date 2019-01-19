@@ -75,9 +75,18 @@ func (i *exprInterpreter) NewInterpretable(program *Program) Interpretable {
 		dispatcher:   i.dispatcher,
 		packager:     i.packager,
 		typeProvider: i.typeProvider}
+	// Plan the program by generating instructions for each step in evaluation.
 	program.plan(staticState)
-	program.bindOperators(i.dispatcher)
-	program.computeConstExprs(staticState)
+	// If the program should be optimized then bind operators and compute constant
+	// expressions. This stage of execution may be slow, but would be useful in cases
+	// where the same expressions is evaluated many times.
+	if program.flags&programFlagOptimize == programFlagOptimize {
+		program.bindOperators(i.dispatcher)
+		program.computeConstExprs(staticState)
+	}
+	// Create a sync.Pool for the state allocations. Since the state array is a fixed
+	// size and its constant values are never modified, the state array instances are
+	// cached in a thread-safe pool and recycled as needed within the Eval loop.
 	statePool := &sync.Pool{
 		New: func() interface{} {
 			runtimeState := make([]ref.Value, staticState.exprCount, staticState.exprCount)
@@ -137,15 +146,18 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 	currActivation := activation
 	d := i.interpreter.dispatcher
 
-	// program counter and execution state.
+	// program counter and instruction traversal setup.
 	pc := 0
 	end := len(i.program.Instructions)
 	steps := i.program.Instructions
+
+	// optimized programs may yield a constant value, if so return it.
 	if pc == end {
 		return i.staticState.values[i.program.resultID], i.staticState
 	}
-	state := i.allocState()
 
+	// allocate state for this evaluation and iterate through the instructions.
+	state := i.allocState()
 	for pc < end {
 		step := steps[pc]
 		switch step.(type) {
@@ -154,6 +166,7 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 		case *SelectExpr:
 			i.evalSelect(state, step.(*SelectExpr), currActivation)
 		case *CallExpr:
+			// dispatch calls directly.
 			d.Dispatch(state, step.(*CallExpr))
 		case *CreateListExpr:
 			i.evalCreateList(state, step.(*CreateListExpr))
@@ -162,7 +175,8 @@ func (i *exprInterpretable) Eval(activation Activation) (ref.Value, EvalState) {
 		case *CreateObjectExpr:
 			i.evalCreateType(state, step.(*CreateObjectExpr))
 		case *MovInst:
-			i.evalMov(state, step.(*MovInst))
+			mv := step.(*MovInst)
+			state[mv.ToExprID] = i.value(state, mv.ID)
 			// Special instruction for modifying the program cursor
 		case *JumpInst:
 			jmpExpr := step.(*JumpInst)

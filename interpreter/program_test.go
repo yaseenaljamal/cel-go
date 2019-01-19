@@ -22,9 +22,10 @@ import (
 )
 
 func TestNewExhaustiveProgram_LogicalOr(t *testing.T) {
-	program := NewExhaustiveProgram(
+	program, _ := NewProgram(
 		test.LogicalOr.Expr,
-		test.LogicalOr.Info(t.Name()))
+		test.LogicalOr.Info(t.Name()),
+		ExhaustiveProgram(true))
 	if loc, found := program.Metadata().IDLocation(1); found {
 		t.Errorf("Unexpected location found: %v", loc)
 	}
@@ -45,9 +46,10 @@ func TestNewExhaustiveProgram_LogicalOr(t *testing.T) {
 }
 
 func TestNewExhaustiveProgram_Conditional(t *testing.T) {
-	program := NewExhaustiveProgram(
+	program, _ := NewProgram(
 		test.Conditional.Expr,
-		test.Conditional.Info(t.Name()))
+		test.Conditional.Info(t.Name()),
+		ExhaustiveProgram(true))
 	if loc, found := program.Metadata().IDLocation(1); found {
 		t.Errorf("Unexpected location found: %v", loc)
 	}
@@ -69,7 +71,7 @@ func TestNewExhaustiveProgram_Conditional(t *testing.T) {
 }
 
 func TestNewProgram_Empty(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.Empty.Expr,
 		test.Empty.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(0); found {
@@ -80,7 +82,7 @@ func TestNewProgram_Empty(t *testing.T) {
 }
 
 func TestNewProgram_LogicalAnd(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.LogicalAnd.Expr,
 		test.LogicalAnd.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(1); found {
@@ -92,7 +94,7 @@ func TestNewProgram_LogicalAnd(t *testing.T) {
 }
 
 func TestNewProgram_LogicalOr(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.LogicalOr.Expr,
 		test.LogicalOr.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(1); found {
@@ -114,7 +116,7 @@ func TestNewProgram_LogicalOr(t *testing.T) {
 }
 
 func TestNewProgram_Conditional(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.Conditional.Expr,
 		test.Conditional.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(1); found {
@@ -141,7 +143,7 @@ func TestNewProgram_Conditional(t *testing.T) {
 }
 
 func TestNewProgram_Comprehension(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.Exists.Expr,
 		test.Exists.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(1); !found {
@@ -153,7 +155,7 @@ func TestNewProgram_Comprehension(t *testing.T) {
 }
 
 func TestNewProgram_DynMap(t *testing.T) {
-	program := NewProgram(
+	program, _ := NewProgram(
 		test.DynMap.Expr,
 		test.DynMap.Info(t.Name()))
 	if loc, found := program.Metadata().IDLocation(1); found {

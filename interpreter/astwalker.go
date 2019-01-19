@@ -139,7 +139,8 @@ func (w *astWalker) walkCall(node *exprpb.Expr) []Instruction {
 		// 0: lhs expr
 		// 1: jump to <END> on true (||), false (&&)
 		// 2: rhs expr
-		// 3: <END> logical-op(lhs, rhs)
+		// 3: logical-op(lhs, rhs)
+		// 4: END
 		var instructionCount = argCount - 1
 		for _, argGroupLen := range argGroupLens {
 			instructionCount += argGroupLen
