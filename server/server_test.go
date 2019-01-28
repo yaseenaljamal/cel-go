@@ -331,8 +331,8 @@ func expectEvalTrue(t *testing.T, source string) {
 	t.Helper()
 	pres, cres, eres := fullPipeline(t, source)
 
-	rootId := pres.ParsedExpr.Expr.Id
-	topType, present := cres.CheckedExpr.TypeMap[rootId]
+	rootID := pres.ParsedExpr.Expr.Id
+	topType, present := cres.CheckedExpr.TypeMap[rootID]
 	if !present {
 		t.Fatal("No type for top level expression", cres)
 	}
@@ -398,5 +398,5 @@ func TestError(t *testing.T) {
 	case *exprpb.ExprValue_Error:
 		return
 	}
-	t.Fatal("got %v, want division by zero error", eres.Result)
+	t.Fatalf("got %v, want division by zero error", eres.Result)
 }

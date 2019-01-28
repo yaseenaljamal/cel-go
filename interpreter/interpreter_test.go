@@ -261,7 +261,7 @@ func TestInterpreter_ZeroArityCall(t *testing.T) {
 	disp := NewDispatcher()
 	disp.Add(&functions.Overload{
 		Operator: "zero",
-		Function: func(args ...ref.Value) ref.Value {
+		Function: func(args ...ref.Val) ref.Val {
 			return types.IntZero
 		},
 	})
@@ -279,7 +279,7 @@ func TestInterpreter_VarArgsCall(t *testing.T) {
 	disp.Add(&functions.Overload{
 		Operator:     "addall",
 		OperandTrait: traits.AdderType,
-		Function: func(args ...ref.Value) ref.Value {
+		Function: func(args ...ref.Val) ref.Val {
 			val := types.Int(0)
 			for _, arg := range args {
 				val += arg.(types.Int)
@@ -389,9 +389,9 @@ func TestInterpreter_BuildObject(t *testing.T) {
 			ConstExpr: &exprpb.Constant{
 				ConstantKind: &exprpb.Constant_StringValue{
 					StringValue: "oneof_test"}}}}
-	if !proto.Equal(result.(ref.Value).Value().(proto.Message), expected) {
+	if !proto.Equal(result.(ref.Val).Value().(proto.Message), expected) {
 		t.Errorf("Could not build object properly. Got '%v', wanted '%v'",
-			result.(ref.Value).Value(),
+			result.(ref.Val).Value(),
 			expected)
 	}
 }
@@ -426,13 +426,13 @@ func TestInterpreter_GetProto2PrimitiveFields(t *testing.T) {
 		"a": types.NewObject(a),
 	}))
 	expected := true
-	got, ok := result.(ref.Value).Value().(bool)
+	got, ok := result.(ref.Val).Value().(bool)
 	if !ok {
 		t.Fatalf("Got '%v', wanted 'true'.", result)
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("Could not build object properly. Got '%v', wanted '%v'",
-			result.(ref.Value).Value(),
+			result.(ref.Val).Value(),
 			expected)
 	}
 }
@@ -487,14 +487,14 @@ func TestInterpreter_SetProto2PrimitiveFields(t *testing.T) {
 	result := eval.Eval(NewActivation(map[string]interface{}{
 		"input": input,
 	}))
-	got, ok := result.(ref.Value).Value().(bool)
+	got, ok := result.(ref.Val).Value().(bool)
 	if !ok {
 		t.Fatalf("Got '%v', wanted 'true'.", result)
 	}
 	expected := true
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("Could not build object properly. Got '%v', wanted '%v'",
-			result.(ref.Value).Value(),
+			result.(ref.Val).Value(),
 			expected)
 	}
 }
@@ -526,13 +526,13 @@ func TestInterpreter_GetObjectEnumField(t *testing.T) {
 		"a": types.NewObject(a),
 	}))
 	expected := int64(1)
-	got, ok := result.(ref.Value).Value().(int64)
+	got, ok := result.(ref.Val).Value().(int64)
 	if !ok {
 		t.Fatalf("cannot cast result to int64: result=%v", result)
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("Could not build object properly. Got '%v', wanted '%v'",
-			result.(ref.Value).Value(),
+			result.(ref.Val).Value(),
 			expected)
 	}
 }
@@ -576,13 +576,13 @@ func TestInterpreter_SetObjectEnumField(t *testing.T) {
 		},
 	}
 	result := eval.Eval(NewActivation(map[string]interface{}{}))
-	got, ok := result.(ref.Value).Value().(*proto3pb.TestAllTypes)
+	got, ok := result.(ref.Val).Value().(*proto3pb.TestAllTypes)
 	if !ok {
 		t.Fatalf("cannot cast result to int64: result=%v", result)
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("Could not build object properly. Got '%v', wanted '%v'",
-			result.(ref.Value).Value(),
+			result.(ref.Val).Value(),
 			expected)
 	}
 }
@@ -618,7 +618,7 @@ func TestInterpreter_BuildMap(t *testing.T) {
 	}
 	i, _ := interpreter.NewUncheckedInterpretable(parsed.GetExpr(), FoldConstants())
 	res := i.Eval(NewActivation(map[string]interface{}{"name": "tristan"}))
-	value, _ := res.(ref.Value).ConvertToNative(
+	value, _ := res.(ref.Val).ConvertToNative(
 		reflect.TypeOf(map[string]string{}))
 	mapVal := value.(map[string]string)
 	if mapVal["b"] != "hi" || mapVal["c"] != "tristan" {
@@ -779,7 +779,7 @@ func parseExpr(t *testing.T, src string) *exprpb.ParsedExpr {
 	return parsed
 }
 
-func evalExpr(t *testing.T, src string) ref.Value {
+func evalExpr(t *testing.T, src string) ref.Val {
 	t.Helper()
 	parsed := parseExpr(t, src)
 	eval, _ := interpreter.NewUncheckedInterpretable(parsed.GetExpr())

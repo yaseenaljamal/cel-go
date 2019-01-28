@@ -15,6 +15,8 @@
 package parser
 
 import (
+	"sync"
+
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"github.com/google/cel-go/common"
 
@@ -197,3 +199,101 @@ func (p *parserHelper) getLocation(id int64) common.Location {
 	location, _ := p.source.OffsetLocation(characterOffset)
 	return location
 }
+
+type exprHelper struct {
+	*parserHelper
+	ctx interface{}
+}
+
+func (e *exprHelper) LiteralBool(value bool) *exprpb.Expr {
+	return e.parserHelper.newLiteralBool(e.ctx, value)
+}
+
+func (e *exprHelper) LiteralBytes(value []byte) *exprpb.Expr {
+	return e.parserHelper.newLiteralBytes(e.ctx, value)
+}
+
+func (e *exprHelper) LiteralDouble(value float64) *exprpb.Expr {
+	return e.parserHelper.newLiteralDouble(e.ctx, value)
+}
+
+func (e *exprHelper) LiteralInt(value int64) *exprpb.Expr {
+	return e.parserHelper.newLiteralInt(e.ctx, value)
+}
+
+func (e *exprHelper) LiteralString(value string) *exprpb.Expr {
+	return e.parserHelper.newLiteralString(e.ctx, value)
+}
+
+func (e *exprHelper) LiteralUint(value uint64) *exprpb.Expr {
+	return e.parserHelper.newLiteralUint(e.ctx, value)
+}
+
+func (e *exprHelper) NewList(elems ...*exprpb.Expr) *exprpb.Expr {
+	return e.parserHelper.newList(e.ctx, elems...)
+}
+
+func (e *exprHelper) NewMap(entries ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
+	return e.parserHelper.newMap(e.ctx, entries...)
+}
+
+func (e *exprHelper) NewMapEntry(key *exprpb.Expr,
+	val *exprpb.Expr) *exprpb.Expr_CreateStruct_Entry {
+	return e.parserHelper.newMapEntry(e.ctx, key, val)
+}
+
+func (e *exprHelper) NewObject(typeName string,
+	fieldInits ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
+	return e.parserHelper.newObject(e.ctx, typeName, fieldInits...)
+}
+
+func (e *exprHelper) NewObjectFieldInit(field string,
+	init *exprpb.Expr) *exprpb.Expr_CreateStruct_Entry {
+	return e.parserHelper.newObjectField(e.ctx, field, init)
+}
+
+func (e *exprHelper) Fold(iterVar string,
+	iterRange *exprpb.Expr,
+	accuVar string,
+	accuInit *exprpb.Expr,
+	condition *exprpb.Expr,
+	step *exprpb.Expr,
+	result *exprpb.Expr) *exprpb.Expr {
+	return e.parserHelper.newComprehension(
+		e.ctx, iterVar, iterRange, accuVar, accuInit, condition, step, result)
+}
+
+func (e *exprHelper) Ident(name string) *exprpb.Expr {
+	return e.parserHelper.newIdent(e.ctx, name)
+}
+
+func (e *exprHelper) GlobalCall(function string, args ...*exprpb.Expr) *exprpb.Expr {
+	return e.parserHelper.newGlobalCall(e.ctx, function, args...)
+}
+
+func (e *exprHelper) MemberCall(function string,
+	target *exprpb.Expr, args ...*exprpb.Expr) *exprpb.Expr {
+	return e.parserHelper.newMemberCall(e.ctx, function, target, args...)
+}
+
+func (e *exprHelper) PresenceTest(operand *exprpb.Expr, field string) *exprpb.Expr {
+	return e.parserHelper.newPresenceTest(e.ctx, operand, field)
+}
+
+func (e *exprHelper) Select(operand *exprpb.Expr, field string) *exprpb.Expr {
+	return e.parserHelper.newSelect(e.ctx, operand, field)
+}
+
+func (e *exprHelper) OffsetLocation(exprID int64) common.Location {
+	offset := e.parserHelper.positions[exprID]
+	location, _ := e.parserHelper.source.OffsetLocation(offset)
+	return location
+}
+
+var (
+	exprHelperPool = &sync.Pool{
+		New: func() interface{} {
+			return &exprHelper{}
+		},
+	}
+)

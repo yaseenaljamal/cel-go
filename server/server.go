@@ -20,14 +20,11 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/google/cel-go/checker"
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
-	"github.com/google/cel-go/common/packages"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
-	"github.com/google/cel-go/interpreter"
-	"github.com/google/cel-go/parser"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -45,21 +42,19 @@ func (s *ConformanceServer) Parse(ctx context.Context, in *exprpb.ParseRequest) 
 		return nil, st.Err()
 	}
 	// NOTE: syntax_version isn't currently used
-	src := common.NewStringSource(in.CelSource, in.SourceLocation)
-	var macs parser.Macros
+	var parseOptions []cel.EnvOption
 	if in.DisableMacros {
-		macs = parser.NoMacros
-	} else {
-		macs = parser.AllMacros
+		parseOptions = append(parseOptions, cel.ClearMacros())
 	}
-	pexpr, errs := parser.ParseWithMacros(src, macs)
+	env, _ := cel.NewEnv(parseOptions...)
+	past, iss := env.Parse(in.CelSource)
 	resp := exprpb.ParseResponse{}
-	if len(errs.GetErrors()) == 0 {
+	if iss == nil || iss.Err() == nil {
 		// Success
-		resp.ParsedExpr = pexpr
+		resp.ParsedExpr, _ = cel.AstToParsedExpr(past)
 	} else {
 		// Failure
-		appendErrors(errs, &resp.Issues)
+		appendErrors(iss.Errors(), &resp.Issues)
 	}
 	return &resp, nil
 }
@@ -74,44 +69,43 @@ func (s *ConformanceServer) Check(ctx context.Context, in *exprpb.CheckRequest) 
 		st := status.New(codes.InvalidArgument, "No source info.")
 		return nil, st.Err()
 	}
-	pkg := packages.NewPackage(in.Container)
-	typeProvider := types.NewProvider()
-	srcInfo := common.NewInfoSource(in.ParsedExpr.SourceInfo)
-	var env *checker.Env
+	// Build the environment.
+	var checkOptions []cel.EnvOption
 	if in.NoStdEnv {
-		env = checker.NewEnv(pkg, typeProvider)
-	} else {
-		env = checker.NewStandardEnv(pkg, typeProvider)
+		checkOptions = append(checkOptions, cel.ClearBuiltIns())
 	}
-	env.Add(in.TypeEnv...)
-	c, errs := checker.Check(in.ParsedExpr, srcInfo, env)
+	checkOptions = append(checkOptions, cel.Package(in.Container))
+	checkOptions = append(checkOptions, cel.Declarations(in.TypeEnv...))
+	env, _ := cel.NewEnv(checkOptions...)
+
+	// Check the expression.
+	cast, iss := env.Check(cel.ParsedExprToAst(in.ParsedExpr))
 	resp := exprpb.CheckResponse{}
-	if len(errs.GetErrors()) == 0 {
+	if iss == nil || iss.Err() == nil {
 		// Success
-		resp.CheckedExpr = c
+		resp.CheckedExpr, _ = cel.AstToCheckedExpr(cast)
 	} else {
 		// Failure
-		appendErrors(errs, &resp.Issues)
+		appendErrors(iss.Errors(), &resp.Issues)
 	}
 	return &resp, nil
 }
 
 // Eval implements ConformanceService.Eval.
 func (s *ConformanceServer) Eval(ctx context.Context, in *exprpb.EvalRequest) (*exprpb.EvalResponse, error) {
-	pkg := packages.NewPackage(in.Container)
-	typeProvider := types.NewProvider()
-	i := interpreter.NewStandardInterpreter(pkg, typeProvider)
-	var ev interpreter.Interpretable
+	env, _ := cel.NewEnv(cel.Package(in.Container))
+	var prg cel.Program
 	var err error
 	switch in.ExprKind.(type) {
 	case *exprpb.EvalRequest_ParsedExpr:
-		parsed := in.GetParsedExpr()
-		ev, err = i.NewUncheckedInterpretable(parsed.GetExpr())
+		ast := cel.ParsedExprToAst(in.GetParsedExpr())
+		prg, err = env.Program(ast)
 		if err != nil {
 			return nil, err
 		}
 	case *exprpb.EvalRequest_CheckedExpr:
-		ev, err = i.NewInterpretable(in.GetCheckedExpr())
+		ast := cel.CheckedExprToAst(in.GetCheckedExpr())
+		prg, err = env.Program(ast)
 		if err != nil {
 			return nil, err
 		}
@@ -128,8 +122,7 @@ func (s *ConformanceServer) Eval(ctx context.Context, in *exprpb.EvalRequest) (*
 		args[name] = refVal
 	}
 	// NOTE: the EvalState is currently discarded
-	result := ev.Eval(interpreter.NewActivation(args))
-	resultExprVal, err := RefValueToExprValue(result)
+	resultExprVal, err := RefValueToExprValue(prg.Eval(cel.Vars(args)))
 	if err != nil {
 		return nil, fmt.Errorf("con't convert result: %s", err)
 	}
@@ -138,8 +131,8 @@ func (s *ConformanceServer) Eval(ctx context.Context, in *exprpb.EvalRequest) (*
 
 // appendErrors converts the errors from errs to Status messages
 // and appends them to the list of issues.
-func appendErrors(errs *common.Errors, issues *[]*rpc.Status) {
-	for _, e := range errs.GetErrors() {
+func appendErrors(errs []common.Error, issues *[]*rpc.Status) {
+	for _, e := range errs {
 		status := ErrToStatus(e, exprpb.IssueDetails_ERROR)
 		*issues = append(*issues, status)
 	}
@@ -158,37 +151,36 @@ func ErrToStatus(e common.Error, severity exprpb.IssueDetails_Severity) *rpc.Sta
 	sd, err := s.WithDetails(&detail)
 	if err == nil {
 		return sd.Proto()
-	} else {
-		return s.Proto()
 	}
+	return s.Proto()
 }
 
 // TODO(jimlarson): The following conversion code should be moved to
 // common/types/provider.go and consolidated/refactored as appropriate.
 // In particular, make judicious use of types.NativeToValue().
 
-// RefValueToExprValue converts between ref.Value and exprpb.ExprValue.
-func RefValueToExprValue(res ref.Value) (*exprpb.ExprValue, error) {
-	if types.IsError(res) {
-		e := res.Value().(error)
-		s := status.Convert(e).Proto()
+// RefValueToExprValue converts between ref.Val and exprpb.ExprValue.
+func RefValueToExprValue(res cel.Result, err error) (*exprpb.ExprValue, error) {
+	if err != nil {
+		s := status.Convert(err).Proto()
 		return &exprpb.ExprValue{
 			Kind: &exprpb.ExprValue_Error{
-				&exprpb.ErrorSet{
+				Error: &exprpb.ErrorSet{
 					Errors: []*rpc.Status{s},
 				},
 			},
 		}, nil
 	}
-	if types.IsUnknown(res) {
+	resVal := res.Value()
+	if types.IsUnknown(resVal) {
 		return &exprpb.ExprValue{
 			Kind: &exprpb.ExprValue_Unknown{
-				&exprpb.UnknownSet{
-					Exprs: res.Value().([]int64),
+				Unknown: &exprpb.UnknownSet{
+					Exprs: resVal.Value().([]int64),
 				},
 			}}, nil
 	}
-	v, err := RefValueToValue(res)
+	v, err := RefValueToValue(resVal)
 	if err != nil {
 		return nil, err
 	}
@@ -211,22 +203,22 @@ var (
 	}
 )
 
-// RefValueToValue converts between ref.Value and Value.
-// The ref.Value must not be error or unknown.
-func RefValueToValue(res ref.Value) (*exprpb.Value, error) {
+// RefValueToValue converts between ref.Val and Value.
+// The ref.Val must not be error or unknown.
+func RefValueToValue(res ref.Val) (*exprpb.Value, error) {
 	switch res.Type() {
 	case types.BoolType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_BoolValue{res.Value().(bool)}}, nil
+			Kind: &exprpb.Value_BoolValue{BoolValue: res.Value().(bool)}}, nil
 	case types.BytesType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_BytesValue{res.Value().([]byte)}}, nil
+			Kind: &exprpb.Value_BytesValue{BytesValue: res.Value().([]byte)}}, nil
 	case types.DoubleType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_DoubleValue{res.Value().(float64)}}, nil
+			Kind: &exprpb.Value_DoubleValue{DoubleValue: res.Value().(float64)}}, nil
 	case types.IntType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_Int64Value{res.Value().(int64)}}, nil
+			Kind: &exprpb.Value_Int64Value{Int64Value: res.Value().(int64)}}, nil
 	case types.ListType:
 		l := res.(traits.Lister)
 		sz := l.Size().(types.Int)
@@ -240,7 +232,7 @@ func RefValueToValue(res ref.Value) (*exprpb.Value, error) {
 		}
 		return &exprpb.Value{
 			Kind: &exprpb.Value_ListValue{
-				&exprpb.ListValue{Values: elts}}}, nil
+				ListValue: &exprpb.ListValue{Values: elts}}}, nil
 	case types.MapType:
 		mapper := res.(traits.Mapper)
 		sz := mapper.Size().(types.Int)
@@ -260,19 +252,19 @@ func RefValueToValue(res ref.Value) (*exprpb.Value, error) {
 		}
 		return &exprpb.Value{
 			Kind: &exprpb.Value_MapValue{
-				&exprpb.MapValue{Entries: entries}}}, nil
+				MapValue: &exprpb.MapValue{Entries: entries}}}, nil
 	case types.NullType:
 		return &exprpb.Value{
 			Kind: &exprpb.Value_NullValue{}}, nil
 	case types.StringType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_StringValue{res.Value().(string)}}, nil
+			Kind: &exprpb.Value_StringValue{StringValue: res.Value().(string)}}, nil
 	case types.TypeType:
 		typeName := res.(ref.Type).TypeName()
-		return &exprpb.Value{Kind: &exprpb.Value_TypeValue{typeName}}, nil
+		return &exprpb.Value{Kind: &exprpb.Value_TypeValue{TypeValue: typeName}}, nil
 	case types.UintType:
 		return &exprpb.Value{
-			Kind: &exprpb.Value_Uint64Value{res.Value().(uint64)}}, nil
+			Kind: &exprpb.Value_Uint64Value{Uint64Value: res.Value().(uint64)}}, nil
 	default:
 		// Object type
 		pb, ok := res.Value().(proto.Message)
@@ -284,12 +276,12 @@ func RefValueToValue(res ref.Value) (*exprpb.Value, error) {
 			return nil, err
 		}
 		return &exprpb.Value{
-			Kind: &exprpb.Value_ObjectValue{any}}, nil
+			Kind: &exprpb.Value_ObjectValue{ObjectValue: any}}, nil
 	}
 }
 
-// ExprValueToRefValue converts between exprpb.ExprValue and ref.Value.
-func ExprValueToRefValue(ev *exprpb.ExprValue) (ref.Value, error) {
+// ExprValueToRefValue converts between exprpb.ExprValue and ref.Val.
+func ExprValueToRefValue(ev *exprpb.ExprValue) (ref.Val, error) {
 	switch ev.Kind.(type) {
 	case *exprpb.ExprValue_Value:
 		return ValueToRefValue(ev.GetValue())
@@ -308,8 +300,8 @@ func ExprValueToRefValue(ev *exprpb.ExprValue) (ref.Value, error) {
 	return nil, status.New(codes.InvalidArgument, "unknown ExprValue kind").Err()
 }
 
-// ValueToRefValue converts between exprpb.Value and ref.Value.
-func ValueToRefValue(v *exprpb.Value) (ref.Value, error) {
+// ValueToRefValue converts between exprpb.Value and ref.Val.
+func ValueToRefValue(v *exprpb.Value) (ref.Val, error) {
 	switch v.Kind.(type) {
 	case *exprpb.Value_NullValue:
 		return types.NullValue, nil
@@ -334,7 +326,7 @@ func ValueToRefValue(v *exprpb.Value) (ref.Value, error) {
 		return types.NewObject(msg.Message), nil
 	case *exprpb.Value_MapValue:
 		m := v.GetMapValue()
-		entries := make(map[ref.Value]ref.Value)
+		entries := make(map[ref.Val]ref.Val)
 		for _, entry := range m.Entries {
 			key, err := ValueToRefValue(entry.Key)
 			if err != nil {
@@ -349,7 +341,7 @@ func ValueToRefValue(v *exprpb.Value) (ref.Value, error) {
 		return types.NewDynamicMap(entries), nil
 	case *exprpb.Value_ListValue:
 		l := v.GetListValue()
-		elts := make([]ref.Value, len(l.Values))
+		elts := make([]ref.Val, len(l.Values))
 		for i, e := range l.Values {
 			rv, err := ValueToRefValue(e)
 			if err != nil {
@@ -363,9 +355,8 @@ func ValueToRefValue(v *exprpb.Value) (ref.Value, error) {
 		tv, ok := typeNameToTypeValue[typeName]
 		if ok {
 			return tv, nil
-		} else {
-			return types.NewObjectTypeValue(typeName), nil
 		}
+		return types.NewObjectTypeValue(typeName), nil
 	}
 	return nil, status.New(codes.InvalidArgument, "unknown value").Err()
 }

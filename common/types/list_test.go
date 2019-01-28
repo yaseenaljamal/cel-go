@@ -87,7 +87,7 @@ func TestBaseList_Get(t *testing.T) {
 }
 
 func TestValueList_Get(t *testing.T) {
-	validateList123(t, NewValueList([]ref.Value{Int(1), Int(2), Int(3)}))
+	validateList123(t, NewValueList([]ref.Val{Int(1), Int(2), Int(3)}))
 }
 
 func TestBaseList_Iterator(t *testing.T) {
@@ -95,7 +95,7 @@ func TestBaseList_Iterator(t *testing.T) {
 }
 
 func TestValueListValue_Iterator(t *testing.T) {
-	validateIterator123(t, NewValueList([]ref.Value{Int(1), Int(2), Int(3)}))
+	validateIterator123(t, NewValueList([]ref.Val{Int(1), Int(2), Int(3)}))
 }
 
 func validateList123(t *testing.T, list traits.Lister) {

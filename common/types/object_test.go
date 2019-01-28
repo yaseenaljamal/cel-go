@@ -48,11 +48,11 @@ func TestNewProtoObject(t *testing.T) {
 func TestProtoObject_Iterator(t *testing.T) {
 	existsMsg := NewObject(test.Exists.Expr).(traits.Iterable)
 	it := existsMsg.Iterator()
-	var fields []ref.Value
+	var fields []ref.Val
 	for it.HasNext() == True {
 		fields = append(fields, it.Next())
 	}
-	if !reflect.DeepEqual(fields, []ref.Value{String("id"), String("comprehension_expr")}) {
+	if !reflect.DeepEqual(fields, []ref.Val{String("id"), String("comprehension_expr")}) {
 		t.Errorf("Got %v, wanted %v", fields, []interface{}{"id", "comprehension_expr"})
 	}
 }

@@ -22,10 +22,11 @@ import (
 	"strconv"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	structpb "github.com/golang/protobuf/ptypes/struct"
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/parser/gen"
+
+	structpb "github.com/golang/protobuf/ptypes/struct"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
@@ -37,10 +38,10 @@ func Parse(source common.Source) (*exprpb.ParsedExpr, *common.Errors) {
 }
 
 // ParseWithMacros converts a source input and macros set to a parsed expression.
-func ParseWithMacros(source common.Source, macros Macros) (*exprpb.ParsedExpr, *common.Errors) {
+func ParseWithMacros(source common.Source, macros []Macro) (*exprpb.ParsedExpr, *common.Errors) {
 	macroMap := make(map[string]Macro)
 	for _, m := range macros {
-		macroMap[makeMacroKey(m.name, m.args, m.instanceStyle)] = m
+		macroMap[makeMacroKey(m.Function(), m.ArgCount(), m.IsReceiverStyle())] = m
 	}
 	p := parser{
 		errors: &parseErrors{common.NewErrors(source)},
@@ -555,17 +556,22 @@ func (p *parser) memberCallOrMacro(ctx interface{}, function string, target *exp
 }
 
 func (p *parser) expandMacro(ctx interface{}, function string, target *exprpb.Expr, args ...*exprpb.Expr) (*exprpb.Expr, bool) {
-	if macro, found := p.macros[makeMacroKey(function, len(args), target != nil)]; found {
-		expr, err := macro.expander(p.helper, ctx, target, args)
-		if err != nil {
-			if err.Location != nil {
-				return p.reportError(err.Location, err.Message), true
-			}
-			return p.reportError(ctx, err.Message), true
-		}
-		return expr, true
+	macro, found := p.macros[makeMacroKey(function, len(args), target != nil)]
+	if !found {
+		return nil, false
 	}
-	return nil, false
+	eh := exprHelperPool.Get().(*exprHelper)
+	defer exprHelperPool.Put(eh)
+	eh.parserHelper = p.helper
+	eh.ctx = ctx
+	expr, err := macro.Expander()(eh, target, args)
+	if err != nil {
+		if err.Location != nil {
+			return p.reportError(err.Location, err.Message), true
+		}
+		return p.reportError(ctx, err.Message), true
+	}
+	return expr, true
 }
 
 func makeMacroKey(name string, args int, instanceStyle bool) string {

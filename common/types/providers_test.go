@@ -32,7 +32,7 @@ func TestTypeProvider_NewValue(t *testing.T) {
 	typeProvider := NewProvider(&exprpb.ParsedExpr{})
 	if sourceInfo := typeProvider.NewValue(
 		"google.api.expr.v1alpha1.SourceInfo",
-		map[string]ref.Value{
+		map[string]ref.Val{
 			"location":     String("TestTypeProvider_NewValue"),
 			"line_offsets": NewDynamicList([]int64{0, 2}),
 			"positions":    NewDynamicMap(map[int64]int64{1: 2, 2: 4}),
@@ -52,7 +52,7 @@ func TestTypeProvider_NewValue_OneofFields(t *testing.T) {
 	typeProvider := NewProvider(&exprpb.ParsedExpr{})
 	if exp := typeProvider.NewValue(
 		"google.api.expr.v1alpha1.Expr",
-		map[string]ref.Value{
+		map[string]ref.Val{
 			"const_expr": NewObject(&exprpb.Constant{ConstantKind: &exprpb.Constant_StringValue{StringValue: "oneof"}}),
 		}); IsError(exp) {
 		t.Error(exp)
@@ -68,7 +68,7 @@ func TestTypeProvider_Getters(t *testing.T) {
 	typeProvider := NewProvider(&exprpb.ParsedExpr{})
 	if sourceInfo := typeProvider.NewValue(
 		"google.api.expr.v1alpha1.SourceInfo",
-		map[string]ref.Value{
+		map[string]ref.Val{
 			"location":     String("TestTypeProvider_GetFieldValue"),
 			"line_offsets": NewDynamicList([]int64{0, 2}),
 			"positions":    NewDynamicMap(map[int64]int64{1: 2, 2: 4}),
@@ -247,7 +247,7 @@ func TestUnsupportedConversion(t *testing.T) {
 	}
 }
 
-func expectValueToNative(t *testing.T, in ref.Value, out interface{}) {
+func expectValueToNative(t *testing.T, in ref.Val, out interface{}) {
 	t.Helper()
 	if val, err := in.ConvertToNative(reflect.TypeOf(out)); err != nil {
 		t.Error(err)
@@ -270,7 +270,7 @@ func expectValueToNative(t *testing.T, in ref.Value, out interface{}) {
 	}
 }
 
-func expectNativeToValue(t *testing.T, in interface{}, out ref.Value) {
+func expectNativeToValue(t *testing.T, in interface{}, out ref.Val) {
 	t.Helper()
 	if val := NativeToValue(in); IsError(val) {
 		t.Error(val)
@@ -291,7 +291,7 @@ func BenchmarkTypeProvider_NewValue(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		typeProvider.NewValue(
 			"google.api.expr.v1.SourceInfo",
-			map[string]ref.Value{
+			map[string]ref.Val{
 				"Location":    String("BenchmarkTypeProvider_NewValue"),
 				"LineOffsets": NewDynamicList([]int64{0, 2}),
 				"Positions":   NewDynamicMap(map[int64]int64{1: 2, 2: 4}),

@@ -42,7 +42,7 @@ var (
 )
 
 // Add implements traits.Adder.Add.
-func (s String) Add(other ref.Value) ref.Value {
+func (s String) Add(other ref.Val) ref.Val {
 	if StringType != other.Type() {
 		return ValOrErr(other, "no such overload")
 	}
@@ -50,14 +50,14 @@ func (s String) Add(other ref.Value) ref.Value {
 }
 
 // Compare implements traits.Comparer.Compare.
-func (s String) Compare(other ref.Value) ref.Value {
+func (s String) Compare(other ref.Val) ref.Val {
 	if StringType != other.Type() {
 		return ValOrErr(other, "no such overload")
 	}
 	return Int(strings.Compare(s.Value().(string), other.Value().(string)))
 }
 
-// ConvertToNative implements ref.Value.ConvertToNative.
+// ConvertToNative implements ref.Val.ConvertToNative.
 func (s String) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
 	switch typeDesc.Kind() {
 	case reflect.String:
@@ -81,8 +81,8 @@ func (s String) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
 		"unsupported native conversion from string to '%v'", typeDesc)
 }
 
-// ConvertToType implements ref.Value.ConvertToType.
-func (s String) ConvertToType(typeVal ref.Type) ref.Value {
+// ConvertToType implements ref.Val.ConvertToType.
+func (s String) ConvertToType(typeVal ref.Type) ref.Val {
 	switch typeVal {
 	case IntType:
 		if n, err := strconv.ParseInt(s.Value().(string), 10, 64); err == nil {
@@ -120,8 +120,8 @@ func (s String) ConvertToType(typeVal ref.Type) ref.Value {
 	return NewErr("type conversion error from '%s' to '%s'", StringType, typeVal)
 }
 
-// Equal implements ref.Value.Equal.
-func (s String) Equal(other ref.Value) ref.Value {
+// Equal implements ref.Val.Equal.
+func (s String) Equal(other ref.Val) ref.Val {
 	if StringType != other.Type() {
 		return ValOrErr(other, "no such overload")
 	}
@@ -129,7 +129,7 @@ func (s String) Equal(other ref.Value) ref.Value {
 }
 
 // Match implements traits.Matcher.Match.
-func (s String) Match(pattern ref.Value) ref.Value {
+func (s String) Match(pattern ref.Val) ref.Val {
 	if pattern.Type() != StringType {
 		return ValOrErr(pattern, "no such overload")
 	}
@@ -141,16 +141,16 @@ func (s String) Match(pattern ref.Value) ref.Value {
 }
 
 // Size implements traits.Sizer.Size.
-func (s String) Size() ref.Value {
+func (s String) Size() ref.Val {
 	return Int(len([]rune(s.Value().(string))))
 }
 
-// Type implements ref.Value.Type.
+// Type implements ref.Val.Type.
 func (s String) Type() ref.Type {
 	return StringType
 }
 
-// Value implements ref.Value.Value.
+// Value implements ref.Val.Value.
 func (s String) Value() interface{} {
 	return string(s)
 }
