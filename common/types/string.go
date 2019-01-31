@@ -178,7 +178,7 @@ func (s String) Value() interface{} {
 func stringContains(s String, sub ref.Value) ref.Value {
 	subStr, ok := sub.(String)
 	if !ok {
-		return NewErr("no such overload")
+		return ValOrErr(sub, "no such overload")
 	}
 	return Bool(strings.Contains(string(s), string(subStr)))
 }
@@ -186,7 +186,7 @@ func stringContains(s String, sub ref.Value) ref.Value {
 func stringEndsWith(s String, suf ref.Value) ref.Value {
 	sufStr, ok := suf.(String)
 	if !ok {
-		return NewErr("no such overload")
+		return ValOrErr(suf, "no such overload")
 	}
 	return Bool(strings.HasSuffix(string(s), string(sufStr)))
 }
@@ -194,7 +194,7 @@ func stringEndsWith(s String, suf ref.Value) ref.Value {
 func stringStartsWith(s String, pre ref.Value) ref.Value {
 	preStr, ok := pre.(String)
 	if !ok {
-		return NewErr("no such overload")
+		return ValOrErr(pre, "no such overload")
 	}
 	return Bool(strings.HasPrefix(string(s), string(preStr)))
 }
