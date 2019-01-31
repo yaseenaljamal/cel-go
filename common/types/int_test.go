@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 )
 
 func TestInt_Add(t *testing.T) {
@@ -139,8 +139,8 @@ func TestInt_Divide(t *testing.T) {
 }
 
 func TestInt_Equal(t *testing.T) {
-	if Int(0).Equal(False).(Bool) {
-		t.Error("Int equal to non-int type")
+	if !IsError(Int(0).Equal(False)) {
+		t.Error("Int equal to non-int type resulted in non-error.")
 	}
 }
 

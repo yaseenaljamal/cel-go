@@ -217,6 +217,8 @@ func NativeToValue(value interface{}) ref.Value {
 		return Bytes(value.([]byte))
 	case []string:
 		return NewStringList(value.([]string))
+	case map[string]string:
+		return NewStringStringMap(value.(map[string]string))
 	case *dpb.Duration:
 		return Duration{value.(*dpb.Duration)}
 	case *structpb.ListValue:

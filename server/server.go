@@ -1,3 +1,17 @@
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package server
 
 import (
@@ -87,18 +101,24 @@ func (s *ConformanceServer) Eval(ctx context.Context, in *exprpb.EvalRequest) (*
 	pkg := packages.NewPackage(in.Container)
 	typeProvider := types.NewProvider()
 	i := interpreter.NewStandardInterpreter(pkg, typeProvider)
-	var prog *interpreter.Program
+	var ev interpreter.Interpretable
+	var err error
 	switch in.ExprKind.(type) {
 	case *exprpb.EvalRequest_ParsedExpr:
 		parsed := in.GetParsedExpr()
-		prog = interpreter.NewProgram(parsed.Expr, parsed.SourceInfo)
+		ev, err = i.NewUncheckedInterpretable(parsed.GetExpr())
+		if err != nil {
+			return nil, err
+		}
 	case *exprpb.EvalRequest_CheckedExpr:
-		prog = interpreter.NewCheckedProgram(in.GetCheckedExpr())
+		ev, err = i.NewInterpretable(in.GetCheckedExpr())
+		if err != nil {
+			return nil, err
+		}
 	default:
 		st := status.New(codes.InvalidArgument, "No expression.")
 		return nil, st.Err()
 	}
-	ev := i.NewInterpretable(prog)
 	args := make(map[string]interface{})
 	for name, exprValue := range in.Bindings {
 		refVal, err := ExprValueToRefValue(exprValue)
@@ -108,7 +128,7 @@ func (s *ConformanceServer) Eval(ctx context.Context, in *exprpb.EvalRequest) (*
 		args[name] = refVal
 	}
 	// NOTE: the EvalState is currently discarded
-	result, _ := ev.Eval(interpreter.NewActivation(args))
+	result := ev.Eval(interpreter.NewActivation(args))
 	resultExprVal, err := RefValueToExprValue(result)
 	if err != nil {
 		return nil, fmt.Errorf("con't convert result: %s", err)

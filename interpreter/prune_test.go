@@ -114,17 +114,17 @@ var testCases = []testInfo{
 }
 
 func TestPrune(t *testing.T) {
-	for _, tst := range testCases {
+	for i, tst := range testCases {
 		pExpr := &exprpb.ParsedExpr{Expr: tst.E}
-		program := NewProgram(pExpr.Expr, pExpr.SourceInfo)
-		interpretable := interpreter.NewInterpretable(program)
-		_, state := interpretable.Eval(
-			NewActivation(map[string]interface{}{}))
-
+		state := NewEvalState()
+		interpretable, _ := interpreter.NewUncheckedInterpretable(
+			pExpr.Expr,
+			ExhaustiveEval(state))
+		interpretable.Eval(NewActivation(map[string]interface{}{}))
 		newExpr := PruneAst(pExpr.Expr, state)
 		actual := debug.ToDebugString(newExpr)
 		if !test.Compare(actual, tst.P) {
-			t.Fatal(test.DiffMessage("structure", actual, tst.P))
+			t.Fatalf("prune[%d], diff: %s", i, test.DiffMessage("structure", actual, tst.P))
 		}
 	}
 }

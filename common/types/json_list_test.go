@@ -20,7 +20,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 
 	anypb "github.com/golang/protobuf/ptypes/any"
 )
@@ -134,11 +134,11 @@ func TestJsonListValue_ConvertToType(t *testing.T) {
 
 func TestJsonListValue_Equal(t *testing.T) {
 	listA := NewJSONList(&structpb.ListValue{Values: []*structpb.Value{
-		{Kind: &structpb.Value_StringValue{StringValue: "hello"}},
-		{Kind: &structpb.Value_NumberValue{NumberValue: 1}}}})
+		{Kind: &structpb.Value_NumberValue{NumberValue: -3}},
+		{Kind: &structpb.Value_StringValue{StringValue: "hello"}}}})
 	listB := NewJSONList(&structpb.ListValue{Values: []*structpb.Value{
 		{Kind: &structpb.Value_NumberValue{NumberValue: 2}},
-		{Kind: &structpb.Value_NumberValue{NumberValue: 3}}}})
+		{Kind: &structpb.Value_StringValue{StringValue: "hello"}}}})
 	if listA.Equal(listB).(Bool) || listB.Equal(listA).(Bool) {
 		t.Error("Lists with different elements considered equal.")
 	}
@@ -148,8 +148,8 @@ func TestJsonListValue_Equal(t *testing.T) {
 	if listA.Add(listA).Equal(listB).(Bool) {
 		t.Error("Lists of different size were equal.")
 	}
-	if listA.Equal(True).(Bool) {
-		t.Error("Equality of different type returned true.")
+	if !IsError(listA.Equal(True)) {
+		t.Error("Equality of different type returned non-error.")
 	}
 }
 

@@ -20,7 +20,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 
 	anypb "github.com/golang/protobuf/ptypes/any"
 )
@@ -119,7 +119,7 @@ func TestJsonStruct_ConvertToType(t *testing.T) {
 func TestJsonStruct_Equal(t *testing.T) {
 	mapVal := NewJSONStruct(&structpb.Struct{Fields: map[string]*structpb.Value{
 		"first":  {Kind: &structpb.Value_StringValue{StringValue: "hello"}},
-		"second": {Kind: &structpb.Value_StringValue{StringValue: "1"}}}})
+		"second": {Kind: &structpb.Value_NumberValue{NumberValue: 4}}}})
 
 	otherVal := NewJSONStruct(&structpb.Struct{Fields: map[string]*structpb.Value{
 		"first":  {Kind: &structpb.Value_StringValue{StringValue: "hello"}},
@@ -134,8 +134,8 @@ func TestJsonStruct_Equal(t *testing.T) {
 	if mapVal.Equal(NewJSONStruct(&structpb.Struct{})) != False {
 		t.Error("Map with key-value pairs was equal to empty map")
 	}
-	if mapVal.Equal(String("")) != False {
-		t.Error("Map was equal to a non-map type.")
+	if !IsError(mapVal.Equal(String(""))) {
+		t.Error("Map equal to a non-map type returned non-error.")
 	}
 }
 

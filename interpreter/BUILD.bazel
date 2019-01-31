@@ -9,13 +9,11 @@ go_library(
     name = "go_default_library",
     srcs = [
         "activation.go",
-        "astwalker.go",
+        "decorators.go",
         "dispatcher.go",
         "evalstate.go",
-        "instructions.go",
         "interpreter.go",
-        "metadata.go",
-        "program.go",
+        "planner.go",
         "prune.go",
     ],
       importpath = "github.com/google/cel-go/interpreter",
@@ -40,10 +38,7 @@ go_test(
     name = "go_default_test",
     srcs = [
         "activation_test.go",
-        "dispatcher_test.go",
-        "evalstate_test.go",
         "interpreter_test.go",
-        "program_test.go",
         "prune_test.go",
     ],
     embed = [

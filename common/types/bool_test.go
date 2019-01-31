@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 )
 
 func TestBool_Compare(t *testing.T) {
@@ -101,8 +101,8 @@ func TestBool_Equal(t *testing.T) {
 	if False.Equal(True).(Bool) {
 		t.Error("False was equal to true")
 	}
-	if Double(0.0).Equal(False).(Bool) {
-		t.Error("Cross-type equality yielded true.")
+	if !IsError(Double(0.0).Equal(False)) {
+		t.Error("Cross-type equality yielded non-error value.")
 	}
 }
 

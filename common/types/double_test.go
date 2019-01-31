@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 )
 
 func TestDouble_Add(t *testing.T) {
@@ -137,8 +137,8 @@ func TestDouble_Divide(t *testing.T) {
 }
 
 func TestDouble_Equal(t *testing.T) {
-	if Double(0).Equal(False).(Bool) {
-		t.Error("Double equal to non-double type")
+	if !IsError(Double(0).Equal(False)) {
+		t.Error("Double equal to non-double resulted in non-error.")
 	}
 }
 

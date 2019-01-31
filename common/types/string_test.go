@@ -133,8 +133,8 @@ func TestString_Equal(t *testing.T) {
 	if String("hello").Equal(String("hell")).(Bool) {
 		t.Error("Two inqueal strings were found equal")
 	}
-	if String("c").Equal(Int(99)).(Bool) {
-		t.Error("String 'c' was found equal to int 99")
+	if !IsError(String("c").Equal(Int(99))) {
+		t.Error("String 'c' equal to int 99 resulted in non-error")
 	}
 }
 
