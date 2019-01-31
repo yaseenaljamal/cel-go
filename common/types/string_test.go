@@ -18,8 +18,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/cel-go/common/overloads"
+	"github.com/google/cel-go/common/types/ref"
+
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/struct"
+	structpb "github.com/golang/protobuf/ptypes/struct"
 
 	dpb "github.com/golang/protobuf/ptypes/duration"
 	tpb "github.com/golang/protobuf/ptypes/timestamp"
@@ -150,6 +153,57 @@ func TestString_Match(t *testing.T) {
 	}
 	if !IsError(str.Match(Int(1))) {
 		t.Error("Matched a non-string pattern.")
+	}
+}
+
+func TestString_Contains(t *testing.T) {
+	y := String("goodbye").Receive(
+		overloads.Contains,
+		overloads.ContainsString,
+		[]ref.Value{String("db")})
+	if y != True {
+		t.Errorf("Got '%v', expected 'true'", y)
+	}
+	n := String("goodbye").Receive(
+		overloads.Contains,
+		overloads.ContainsString,
+		[]ref.Value{String("ggood")})
+	if n == True {
+		t.Errorf("Got '%v', expected 'true'", n)
+	}
+}
+
+func TestString_EndsWith(t *testing.T) {
+	y := String("goodbye").Receive(
+		overloads.EndsWith,
+		overloads.EndsWithString,
+		[]ref.Value{String("bye")})
+	if y == False {
+		t.Errorf("Got '%v', expected 'true'", y)
+	}
+	n := String("goodbye").Receive(
+		overloads.EndsWith,
+		overloads.EndsWithString,
+		[]ref.Value{String("good")})
+	if n == True {
+		t.Errorf("Got '%v', expected 'true'", n)
+	}
+}
+
+func TestString_StartsWith(t *testing.T) {
+	y := String("goodbye").Receive(
+		overloads.StartsWith,
+		overloads.StartsWithString,
+		[]ref.Value{String("good")})
+	if y != True {
+		t.Errorf("Got '%v', expected 'true'", y)
+	}
+	n := String("goodbye").Receive(
+		overloads.StartsWith,
+		overloads.StartsWithString,
+		[]ref.Value{String("db")})
+	if n == True {
+		t.Errorf("Got '%v', expected 'true'", n)
 	}
 }
 
