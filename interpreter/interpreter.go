@@ -25,21 +25,6 @@ import (
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
-// Interpretable can accept a given Activation and produce a value along with
-// an accompanying EvalState which can be used to inspect whether additional
-// data might be necessary to complete the evaluation.
-type Interpretable interface {
-	// ID value corresponding to the expression node.
-	ID() int64
-
-	// Eval an Activation to produce an output.
-	Eval(activation Activation) ref.Val
-}
-
-// InterpretableDecorator is a functional interface for decorating or replacing
-// Interpretable expression nodes at construction time.
-type InterpretableDecorator func(Interpretable) (Interpretable, error)
-
 // Interpreter generates a new Interpretable from a checked or unchecked expression.
 type Interpreter interface {
 	// NewInterpretable creates an Interpretable from a checked expression and an

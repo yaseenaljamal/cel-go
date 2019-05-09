@@ -21,6 +21,10 @@ import (
 	"github.com/google/cel-go/common/types/traits"
 )
 
+// InterpretableDecorator is a functional interface for decorating or replacing
+// Interpretable expression nodes at construction time.
+type InterpretableDecorator func(Interpretable) (Interpretable, error)
+
 // evalObserver is a functional interface that accepts an expression id and an observed value.
 type evalObserver func(int64, ref.Val)
 
