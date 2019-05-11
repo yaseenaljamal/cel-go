@@ -20,5 +20,9 @@ import "github.com/google/cel-go/common/types/ref"
 type Receiver interface {
 	// Receive accepts a function name, overload id, and arguments and returns
 	// a value.
-	Receive(function string, overload string, args []ref.Val) ref.Val
+	Receive(function string, overload string, args ...ref.Val) ref.Val
+
+	ReceiveUnary(function string, overload string) ref.Val
+
+	ReceiveBinary(function string, overload string, rhs ref.Val) ref.Val
 }

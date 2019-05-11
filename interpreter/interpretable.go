@@ -15,43 +15,7 @@ type Interpretable interface {
 	ID() int64
 
 	// Eval an Activation to produce an output.
-	Eval(activation Activation) ref.Val
-}
-
-type evalIdent struct {
-	id        int64
-	name      string
-	provider  ref.TypeProvider
-	resolveID func(Activation) (ref.Val, bool)
-}
-
-// ID implements the Interpretable interface method.
-func (id *evalIdent) ID() int64 {
-	return id.id
-}
-
-// Eval implements the Interpretable interface method.
-func (id *evalIdent) Eval(ctx Activation) ref.Val {
-	idName := id.name
-	if id.resolveID != nil {
-		// When the resolveID function is non-nil, the name could be relative
-		// to the container.
-		if val, found := id.resolveID(ctx); found {
-			return val
-		}
-	} else {
-		// Resolve the simple name directly as a type or ident.
-		val, found := ctx.ResolveName(idName)
-		if found {
-			return val
-		}
-		typeVal, found := id.provider.FindIdent(idName)
-		if found {
-			return typeVal
-		}
-	}
-	return types.Unknown{id.id}
-
+	Eval(Activation) ref.Val
 }
 
 type evalSelect struct {
@@ -68,13 +32,6 @@ func (sel *evalSelect) ID() int64 {
 
 // Eval implements the Interpretable interface method.
 func (sel *evalSelect) Eval(ctx Activation) ref.Val {
-	// If the select is actually a qualified identifier return.
-	if sel.resolveID != nil {
-		if resolve, found := sel.resolveID(ctx); found {
-			return resolve
-		}
-	}
-	// Otherwise, evaluate the operand and select the field.
 	obj := sel.op.Eval(ctx)
 	indexer, ok := obj.(traits.Indexer)
 	if !ok {
@@ -319,7 +276,7 @@ func (un *evalUnary) Eval(ctx Activation) ref.Val {
 	// Otherwise, if the argument is a ReceiverType attempt to invoke the receiver method on the
 	// operand (arg0).
 	if argVal.Type().HasTrait(traits.ReceiverType) {
-		return argVal.(traits.Receiver).Receive(un.function, un.overload, []ref.Val{})
+		return argVal.(traits.Receiver).ReceiveUnary(un.function, un.overload)
 	}
 	return types.NewErr("no such overload: %s", un.function)
 }
@@ -358,7 +315,11 @@ func (bin *evalBinary) Eval(ctx Activation) ref.Val {
 	// Otherwise, if the argument is a ReceiverType attempt to invoke the receiver method on the
 	// operand (arg0).
 	if lVal.Type().HasTrait(traits.ReceiverType) {
-		return lVal.(traits.Receiver).Receive(bin.function, bin.overload, []ref.Val{rVal})
+		rcvr := lVal.(traits.Receiver)
+		return rcvr.ReceiveBinary(
+			bin.function,
+			bin.overload,
+			rVal)
 	}
 	return types.NewErr("no such overload: %s", bin.function)
 }
@@ -396,7 +357,7 @@ func (fn *evalVarArgs) Eval(ctx Activation) ref.Val {
 	// Otherwise, if the argument is a ReceiverType attempt to invoke the receiver method on the
 	// operand (arg0).
 	if arg0.Type().HasTrait(traits.ReceiverType) {
-		return arg0.(traits.Receiver).Receive(fn.function, fn.overload, argVals[1:])
+		return arg0.(traits.Receiver).Receive(fn.function, fn.overload, argVals[1:]...)
 	}
 	return types.NewErr("no such overload: %s", fn.function)
 }
@@ -534,3 +495,8 @@ func (fold *evalFold) Eval(ctx Activation) ref.Val {
 	varActivationPool.Put(accuCtx)
 	return res
 }
+
+var (
+	// no arg value for unary receiver methods.
+	noArg = []ref.Val{}
+)

@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/common/overloads"
-	"github.com/google/cel-go/common/types/ref"
 
 	"github.com/golang/protobuf/proto"
 	structpb "github.com/golang/protobuf/ptypes/struct"
@@ -160,14 +159,14 @@ func TestString_Contains(t *testing.T) {
 	y := String("goodbye").Receive(
 		overloads.Contains,
 		overloads.ContainsString,
-		[]ref.Val{String("db")})
+		String("db"))
 	if y != True {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
 	n := String("goodbye").Receive(
 		overloads.Contains,
 		overloads.ContainsString,
-		[]ref.Val{String("ggood")})
+		String("ggood"))
 	if n == True {
 		t.Errorf("Got '%v', expected 'true'", n)
 	}
@@ -177,14 +176,14 @@ func TestString_EndsWith(t *testing.T) {
 	y := String("goodbye").Receive(
 		overloads.EndsWith,
 		overloads.EndsWithString,
-		[]ref.Val{String("bye")})
+		String("bye"))
 	if y == False {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
 	n := String("goodbye").Receive(
 		overloads.EndsWith,
 		overloads.EndsWithString,
-		[]ref.Val{String("good")})
+		String("good"))
 	if n == True {
 		t.Errorf("Got '%v', expected 'true'", n)
 	}
@@ -194,14 +193,14 @@ func TestString_StartsWith(t *testing.T) {
 	y := String("goodbye").Receive(
 		overloads.StartsWith,
 		overloads.StartsWithString,
-		[]ref.Val{String("good")})
+		String("good"))
 	if y != True {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
 	n := String("goodbye").Receive(
 		overloads.StartsWith,
 		overloads.StartsWithString,
-		[]ref.Val{String("db")})
+		String("db"))
 	if n == True {
 		t.Errorf("Got '%v', expected 'true'", n)
 	}

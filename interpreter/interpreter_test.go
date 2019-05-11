@@ -39,7 +39,7 @@ import (
 type testCase struct {
 	name string
 	E    string
-	I    map[string]interface{}
+	I    interface{}
 }
 
 func TestExhaustiveInterpreter_ConditionalExpr(t *testing.T) {

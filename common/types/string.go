@@ -154,12 +154,17 @@ func (s String) Match(pattern ref.Val) ref.Val {
 }
 
 // Receive implements traits.Reciever.Receive.
-func (s String) Receive(function string, overload string, args []ref.Val) ref.Val {
-	switch len(args) {
-	case 1:
-		if f, found := stringOneArgOverloads[function]; found {
-			return f(s, args[0])
-		}
+func (s String) Receive(function string, overload string, args ...ref.Val) ref.Val {
+	return NewErr("no such overload")
+}
+
+func (s String) ReceiveUnary(function string, overload string) ref.Val {
+	return NewErr("no such overload")
+}
+
+func (s String) ReceiveBinary(function string, overload string, rhs ref.Val) ref.Val {
+	if f, found := stringOneArgOverloads[function]; found {
+		return f(s, rhs)
 	}
 	return NewErr("no such overload")
 }

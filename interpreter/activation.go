@@ -27,13 +27,19 @@ import (
 //
 // An Activation is the primary mechanism by which a caller supplies input into a CEL program.
 type Activation interface {
-	// ResolveName returns a value from the activation by qualified name, or false if the name
+	// Find returns a value from the activation by qualified name, or false if the name
 	// could not be found.
-	ResolveName(name string) (ref.Val, bool)
+	Find(name string) (interface{}, bool)
 
 	// Parent returns the parent of the current activation, may be nil.
 	// If non-nil, the parent will be searched during resolve calls.
 	Parent() Activation
+
+	Resolve(int64, CtxGetter) ref.Val
+}
+
+type CtxGetter interface {
+   Get(Activation) interface{}
 }
 
 // EmptyActivation returns a variable free activation.
@@ -98,21 +104,23 @@ func (a *mapActivation) Parent() Activation {
 }
 
 // ResolveName implements the Activation interface method.
-func (a *mapActivation) ResolveName(name string) (ref.Val, bool) {
+func (a *mapActivation) Find(name string) (interface{}, bool) {
 	if object, found := a.bindings[name]; found {
 		switch object.(type) {
 		// Resolve a lazily bound value.
 		case func() ref.Val:
 			val := object.(func() ref.Val)()
-			val = a.adapter.NativeToValue(val)
-			a.bindings[name] = val
 			return val, true
 		// Otherwise, return the bound value.
 		default:
-			return a.adapter.NativeToValue(object), true
+			return object, true
 		}
 	}
 	return nil, false
+}
+
+func (a *mapActivation) Resolve(id int64, getter CtxGetter) ref.Val {
+	return a.adapter.NativeToValue(getter.Get(a))
 }
 
 // hierarchicalActivation which implements Activation and contains a parent and
@@ -128,17 +136,59 @@ func (a *hierarchicalActivation) Parent() Activation {
 }
 
 // ResolveName implements the Activation interface method.
-func (a *hierarchicalActivation) ResolveName(name string) (ref.Val, bool) {
-	if object, found := a.child.ResolveName(name); found {
+func (a *hierarchicalActivation) Find(name string) (interface{}, bool) {
+	if object, found := a.child.Find(name); found {
 		return object, found
 	}
-	return a.parent.ResolveName(name)
+	return a.parent.Find(name)
+}
+
+func (a *hierarchicalActivation) Resolve(id int64, getter CtxGetter) ref.Val {
+	obj := a.child.Resolve(id, getter)
+	if obj != nil {
+		return obj
+	}
+	return a.parent.Resolve(id, getter)
 }
 
 // NewHierarchicalActivation takes two activations and produces a new one which prioritizes
 // resolution in the child first and parent(s) second.
 func NewHierarchicalActivation(parent Activation, child Activation) Activation {
 	return &hierarchicalActivation{parent, child}
+}
+
+type memoActivation struct {
+	proxy Activation
+	resolved map[int64]ref.Val
+}
+
+func (a *memoActivation) Find(name string) (interface{}, bool) {
+	return a.proxy.Find(name)
+}
+
+func (a *memoActivation) Parent() Activation {
+	return a.proxy.Parent()
+}
+
+func (a *memoActivation) Resolve(id int64, getter CtxGetter) ref.Val {
+	out, found := a.resolved[id]
+	if found {
+		return out
+	}
+	defer func() {
+		if out != nil {
+			a.resolved[id] = out
+		}
+	}()
+	out = a.proxy.Resolve(id, getter)
+	return out
+}
+
+func MemoizeActivation(a Activation) Activation {
+	return &memoActivation{
+		proxy: a,
+		resolved: make(map[int64]ref.Val),
+	}
 }
 
 // newVarActivation returns a new varActivation instance.
@@ -165,11 +215,19 @@ func (v *varActivation) Parent() Activation {
 }
 
 // ResolveName implements the Activation interface method.
-func (v *varActivation) ResolveName(name string) (ref.Val, bool) {
+func (v *varActivation) Find(name string) (interface{}, bool) {
 	if name == v.name {
 		return v.val, true
 	}
-	return v.parent.ResolveName(name)
+	return v.parent.Find(name)
+}
+
+func (v *varActivation) Resolve(id int64, getter CtxGetter) ref.Val {
+	obj := getter.Get(v)
+	if obj != nil {
+		return obj.(ref.Val)
+	}
+	return v.parent.Resolve(id, getter)
 }
 
 var (

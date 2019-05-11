@@ -21,6 +21,7 @@ import (
 	"github.com/google/cel-go/common/packages"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/common/types/traits"
 	"github.com/google/cel-go/interpreter/functions"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
@@ -51,6 +52,7 @@ func newPlanner(disp Dispatcher,
 		refMap:     checked.GetReferenceMap(),
 		typeMap:    checked.GetTypeMap(),
 		decorators: decorators,
+		isChecked: true,
 	}
 }
 
@@ -84,6 +86,7 @@ type planner struct {
 	refMap     map[int64]*exprpb.Reference
 	typeMap    map[int64]*exprpb.Type
 	decorators []InterpretableDecorator
+	isChecked bool
 }
 
 // Plan implements the interpretablePlanner interface. This implementation of the Plan method also
@@ -135,16 +138,8 @@ func (p *planner) planIdent(expr *exprpb.Expr) (Interpretable, error) {
 	if found {
 		return i, nil
 	}
-	var resolver func(Activation) (ref.Val, bool)
-	if p.pkg.Package() != "" {
-		resolver = p.idResolver(idName)
-	}
-	i = &evalIdent{
-		id:        expr.Id,
-		name:      idName,
-		provider:  p.provider,
-		resolveID: resolver,
-	}
+	candNames := p.pkg.ResolveCandidateNames(idName)
+	i = p.newIdentRef(expr.Id, candNames)
 	p.identMap[idName] = i
 	return i, nil
 }
@@ -196,10 +191,8 @@ func (p *planner) planSelect(expr *exprpb.Expr) (Interpretable, error) {
 			return i, nil
 		}
 		// Otherwise, generate an evalIdent Interpretable.
-		i = &evalIdent{
-			id:   expr.Id,
-			name: idName,
-		}
+		candNames := p.pkg.ResolveCandidateNames(idName)
+		i = p.newIdentRef(expr.Id, candNames)
 		p.identMap[idName] = i
 		return i, nil
 	}
@@ -209,15 +202,14 @@ func (p *planner) planSelect(expr *exprpb.Expr) (Interpretable, error) {
 	if err != nil {
 		return nil, err
 	}
-	var resolver func(Activation) (ref.Val, bool)
-	if qualID, isID := p.getQualifiedID(sel); isID {
-		resolver = p.idResolver(qualID)
+	ctxRef, isRef := op.(ctxReference)
+	if isRef {
+		return ctxRef.Select(expr.Id, types.String(sel.Field)), nil
 	}
 	return &evalSelect{
 		id:        expr.Id,
 		field:     types.String(sel.Field),
 		op:        op,
-		resolveID: resolver,
 	}, nil
 }
 
@@ -267,6 +259,11 @@ func (p *planner) planCall(expr *exprpb.Expr) (Interpretable, error) {
 		return p.planCallEqual(expr, args)
 	case operators.NotEquals:
 		return p.planCallNotEqual(expr, args)
+	case operators.Index:
+		plan, err := p.planCallIndex(expr, args)
+		if plan != nil || err != nil {
+			return plan, err
+		}
 	}
 
 	// Otherwise, generate Interpretable calls specialized by argument count.
@@ -390,6 +387,23 @@ func (p *planner) planCallNotEqual(expr *exprpb.Expr,
 		lhs: args[0],
 		rhs: args[1],
 	}, nil
+}
+
+func (p *planner) planCallIndex(expr *exprpb.Expr,
+	args []Interpretable) (Interpretable, error) {
+	op := args[0]
+	arg := args[1]
+	ctxRef, isRef := op.(ctxReference)
+	if isRef {
+		a, isConst := arg.(*evalConst)
+		if isConst {
+			sel := ctxRef.Select(expr.Id, a.val)
+			if sel != nil {
+				return sel, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 // planCallLogicalAnd generates a logical and (&&) Interpretable.
@@ -574,107 +588,266 @@ func (p *planner) constValue(c *exprpb.Constant) (ref.Val, error) {
 	return nil, fmt.Errorf("unknown constant type: %v", c)
 }
 
-// getQualifiedId converts a Select expression to a qualified identifier suitable for identifier
-// resolution. If the expression is not an identifier, the second return will be false.
-func (p *planner) getQualifiedID(sel *exprpb.Expr_Select) (string, bool) {
-	validIdent := true
-	resolvedIdent := false
-	ident := sel.Field
-	op := sel.Operand
-	for validIdent && !resolvedIdent {
-		switch op.ExprKind.(type) {
-		case *exprpb.Expr_IdentExpr:
-			ident = op.GetIdentExpr().Name + "." + ident
-			resolvedIdent = true
-		case *exprpb.Expr_SelectExpr:
-			nested := op.GetSelectExpr()
-			ident = nested.GetField() + "." + ident
-			op = nested.Operand
-		default:
-			validIdent = false
-		}
+func (p *planner) newIdentRef(id int64, names []string) ctxReference {
+	r := &identRef{
+		id: id,
+		names: names,
+		adapter: p.adapter,
+		provider: p.provider}
+	if p.isChecked {
+		return r
 	}
-	return ident, validIdent
-}
-
-// idResolver returns a function that resolves an identifier to its appropriate namespace.
-func (p *planner) idResolver(ident string) func(Activation) (ref.Val, bool) {
-	return func(ctx Activation) (ref.Val, bool) {
-		for _, id := range p.pkg.ResolveCandidateNames(ident) {
-			if object, found := ctx.ResolveName(id); found {
-				return object, found
-			}
-			if typeIdent, found := p.provider.FindIdent(id); found {
-				return typeIdent, found
-			}
-		}
-		return nil, false
-	}
+	return &oneofRef{adapter: p.adapter, refs: []ctxReference{r}}
 }
 
 type ctxReference interface {
+	Interpretable
+	CtxGetter
 	Select(int64, ref.Val) ctxReference
 }
 
 type identRef struct {
 	id    int64
 	names []string
+	adapter ref.TypeAdapter
+	provider ref.TypeProvider
+}
+
+func (r *identRef) ID() int64 {
+	return r.id
 }
 
 func (r *identRef) Select(id int64, val ref.Val) ctxReference {
-	return defaultSelector(id, r, val)
+	return defaultSelector(id, r, r.adapter, val)
+}
+
+func (r *identRef) Get(vars Activation) interface{} {
+	for _, name := range r.names {
+		val, found := vars.Find(name)
+		if found {
+			return val
+		}
+		typeVal, found := r.provider.FindIdent(name)
+		if found {
+			return typeVal
+		}
+	}
+	return nil
+}
+
+func (r *identRef) Eval(vars Activation) ref.Val {
+	val := vars.Resolve(r.id, r)
+	if val != nil {
+		return val
+	}
+	return types.Unknown{r.id}
 }
 
 type fieldRef struct {
 	id    int64
-	op    ctxReference
-	field string
+	op    CtxGetter
+	field types.String
+	adapter ref.TypeAdapter
+}
+
+func (r *fieldRef) ID() int64 {
+	return r.id
 }
 
 func (r *fieldRef) Select(id int64, val ref.Val) ctxReference {
-	return defaultSelector(id, r, val)
+	return defaultSelector(id, r, r.adapter, val)
+}
+
+func (r *fieldRef) Get(vars Activation) interface{} {
+	opVal := r.op.Get(vars)
+	if opVal == nil {
+		return nil
+	}
+	switch opVal.(type) {
+	case map[string]string:
+		m := opVal.(map[string]string)
+		k := string(r.field)
+		return types.String(m[k])
+	case map[string]interface{}:
+		m := opVal.(map[string]interface{})
+		k := string(r.field)
+		return m[k]
+	case traits.Indexer:
+		obj := opVal.(traits.Indexer)
+		return obj.Get(r.field)
+	case ref.Val:
+		return types.ValOrErr(opVal.(ref.Val), "no such overload")
+	default:
+		celVal := r.adapter.NativeToValue(opVal)
+		if types.IsUnknownOrError(celVal) {
+			return types.NewErr("cannot adapt type: %T", opVal)
+		}
+		obj, ok := celVal.(traits.Indexer)
+		if !ok {
+			return types.NewErr("no such overload")
+		}
+		return obj.Get(r.field)
+	}
+}
+
+func (r *fieldRef) Eval(vars Activation) ref.Val {
+	return vars.Resolve(r.id, r)
 }
 
 type indexRef struct {
 	id  int64
 	op  ctxReference
-	idx int
+	idx types.Int
+	adapter ref.TypeAdapter
+}
+
+func (r *indexRef) ID() int64 {
+	return r.id
 }
 
 func (r *indexRef) Select(id int64, val ref.Val) ctxReference {
-	return defaultSelector(id, r, val)
+	return defaultSelector(id, r, r.adapter, val)
 }
 
-type keyRef struct {
-	id  int64
-	op  ctxReference
-	key ref.Val
+func (r *indexRef) Get(vars Activation) interface{} {
+	opVal := r.op.Get(vars)
+	if opVal == nil {
+		return nil
+	}
+	switch opVal.(type) {
+	case []string:
+		l := opVal.([]string)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.String(l[idx])
+	case []int:
+		l := opVal.([]int)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []int32:
+		l := opVal.([]int32)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []int64:
+		l := opVal.([]int64)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []float32:
+		l := opVal.([]float32)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Double(l[idx])
+	case []float64:
+		l := opVal.([]float64)
+		idx := int(r.idx)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Double(l[idx])
+	case traits.Lister:
+		l := opVal.(traits.Lister)
+		return l.Get(r.idx)
+	case ref.Val:
+		return types.ValOrErr(opVal.(ref.Val), "no such overload")
+	default:
+		celVal := r.adapter.NativeToValue(opVal)
+		if types.IsUnknownOrError(celVal) {
+			return types.NewErr("cannot adapt type: %T", opVal)
+		}
+		obj, ok := celVal.(traits.Indexer)
+		if !ok {
+			return types.NewErr("no such overload")
+		}
+		return obj.Get(r.idx)
+	}
 }
 
-func (r *keyRef) Select(id int64, val ref.Val) ctxReference {
-	return defaultSelector(id, r, val)
+func (r *indexRef) Eval(vars Activation) ref.Val {
+	return vars.Resolve(r.id, r)
 }
 
 type oneofRef struct {
 	refs []ctxReference
+	adapter ref.TypeAdapter
 }
 
-func defaultSelector(id int64, op ctxReference, val ref.Val) ctxReference {
+func (r *oneofRef) ID() int64 {
+	return r.refs[0].ID()
+}
+
+func (r *oneofRef) Select(id int64, val ref.Val) ctxReference {
+	var expandedRefs []ctxReference
+	for _, oneof := range r.refs {
+		ident, ok := oneof.(*identRef)
+		if ok && val.Type() == types.StringType {
+			field := string(val.(types.String))
+			oldNames := ident.names
+			expandedNames := make([]string, len(oldNames), len(oldNames))
+			for i, n := range oldNames {
+				expandedNames[i] = n + "." + field
+			}
+			expandedIdent := &identRef{
+				id: id,
+				names: expandedNames,
+				adapter: ident.adapter,
+				provider: ident.provider}
+			expandedRefs = append(expandedRefs, expandedIdent)
+		}
+		expandedRefs = append(expandedRefs, oneof.Select(id, val))
+	}
+	return &oneofRef{adapter: r.adapter, refs: expandedRefs}
+}
+
+func (r *oneofRef) Eval(vars Activation) ref.Val {
+	for _, oneof := range r.refs {
+		val := oneof.Get(vars)
+		if val != nil {
+			return r.adapter.NativeToValue(val)
+		}
+	}
+	return types.NewErr("no such reference")
+}
+
+func (r *oneofRef) Get(vars Activation) interface{} {
+	for _, oneof := range r.refs {
+		val := oneof.Get(vars)
+		if val != nil {
+			return val
+		}
+	}
+	return nil
+}
+
+func defaultSelector(id int64,
+	 op ctxReference,
+	 adapter ref.TypeAdapter,
+	 val ref.Val) ctxReference {
 	switch val.Type() {
 	case types.StringType:
 		return &fieldRef{
 			id:    id,
 			op:    op,
-			field: string(val.(types.String))}
+			adapter: adapter,
+			field: val.(types.String)}
 	case types.IntType:
 		return &indexRef{
 			id:  id,
 			op:  op,
-			idx: int(val.(types.Int))}
-	default:
-		return &keyRef{
-			id:  id,
-			op:  op,
-			key: val}
+			adapter: adapter,
+			idx: val.(types.Int)}
 	}
+	return nil
 }

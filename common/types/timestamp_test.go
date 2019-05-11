@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/common/overloads"
-	"github.com/google/cel-go/common/types/ref"
 
 	dpb "github.com/golang/protobuf/ptypes/duration"
 	tpb "github.com/golang/protobuf/ptypes/timestamp"
@@ -54,13 +53,13 @@ func TestTimestamp_Subtract(t *testing.T) {
 func TestTimestamp_ReceiveGetMonth(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	hr := ts.Receive(overloads.TimeGetMonth, overloads.TimestampToMonth, []ref.Val{})
+	hr := ts.Receive(overloads.TimeGetMonth, overloads.TimestampToMonth)
 	if !hr.Equal(Int(0)).(Bool) {
 		t.Error("Expected 0, got", hr)
 	}
 	// 1969-12-31T19:05:05Z
 	hrTz := ts.Receive(overloads.TimeGetMonth, overloads.TimestampToMonthWithTz,
-		[]ref.Val{String("America/Phoenix")})
+		String("America/Phoenix"))
 	if !hrTz.Equal(Int(11)).(Bool) {
 		t.Error("Expected 11, got", hrTz)
 	}
@@ -69,13 +68,13 @@ func TestTimestamp_ReceiveGetMonth(t *testing.T) {
 func TestTimestamp_ReceiveGetHours(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	hr := ts.Receive(overloads.TimeGetHours, overloads.TimestampToHours, []ref.Val{})
+	hr := ts.Receive(overloads.TimeGetHours, overloads.TimestampToHours)
 	if !hr.Equal(Int(2)).(Bool) {
 		t.Error("Expected 2 hours, got", hr)
 	}
 	// 1969-12-31T19:05:05Z
 	hrTz := ts.Receive(overloads.TimeGetHours, overloads.TimestampToHoursWithTz,
-		[]ref.Val{String("America/Phoenix")})
+		String("America/Phoenix"))
 	if !hrTz.Equal(Int(19)).(Bool) {
 		t.Error("Expected 19 hours, got", hrTz)
 	}
@@ -84,13 +83,13 @@ func TestTimestamp_ReceiveGetHours(t *testing.T) {
 func TestTimestamp_ReceiveGetMinutes(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	min := ts.Receive(overloads.TimeGetMinutes, overloads.TimestampToMinutes, []ref.Val{})
+	min := ts.Receive(overloads.TimeGetMinutes, overloads.TimestampToMinutes)
 	if !min.Equal(Int(5)).(Bool) {
 		t.Error("Expected 5 minutes, got", min)
 	}
 	// 1969-12-31T19:05:05Z
 	minTz := ts.Receive(overloads.TimeGetMinutes, overloads.TimestampToMinutesWithTz,
-		[]ref.Val{String("America/Phoenix")})
+		String("America/Phoenix"))
 	if !minTz.Equal(Int(5)).(Bool) {
 		t.Error("Expected 5 minutes, got", minTz)
 	}
@@ -99,13 +98,13 @@ func TestTimestamp_ReceiveGetMinutes(t *testing.T) {
 func TestTimestamp_ReceiveGetSeconds(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	sec := ts.Receive(overloads.TimeGetSeconds, overloads.TimestampToSeconds, []ref.Val{})
+	sec := ts.Receive(overloads.TimeGetSeconds, overloads.TimestampToSeconds)
 	if !sec.Equal(Int(6)).(Bool) {
 		t.Error("Expected 6 seconds, got", sec)
 	}
 	// 1969-12-31T19:05:05Z
 	secTz := ts.Receive(overloads.TimeGetSeconds, overloads.TimestampToSecondsWithTz,
-		[]ref.Val{String("America/Phoenix")})
+		String("America/Phoenix"))
 	if !secTz.Equal(Int(6)).(Bool) {
 		t.Error("Expected 6 seconds, got", secTz)
 	}

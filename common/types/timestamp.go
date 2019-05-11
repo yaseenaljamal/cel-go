@@ -116,21 +116,30 @@ func (t Timestamp) Equal(other ref.Val) ref.Val {
 }
 
 // Receive implements traits.Reciever.Receive.
-func (t Timestamp) Receive(function string, overload string, args []ref.Val) ref.Val {
-	ts := t.Timestamp
-	tstamp, err := ptypes.Timestamp(ts)
-	if err != nil {
-		return &Err{err}
+func (t Timestamp) Receive(function string, overload string, args ...ref.Val) ref.Val {
+	return NewErr("no such overload")
+}
+
+func (t Timestamp) ReceiveUnary(function string, overload string) ref.Val {
+	if f, found := timestampZeroArgOverloads[function]; found {
+		ts := t.Timestamp
+		tstamp, err := ptypes.Timestamp(ts)
+		if err != nil {
+			return &Err{err}
+		}
+		return f(tstamp)
 	}
-	switch len(args) {
-	case 0:
-		if f, found := timestampZeroArgOverloads[function]; found {
-			return f(tstamp)
+	return NewErr("no such overload")
+}
+
+func (t Timestamp) ReceiveBinary(function string, overload string, arg ref.Val) ref.Val {
+	if f, found := timestampOneArgOverloads[function]; found {
+		ts := t.Timestamp
+		tstamp, err := ptypes.Timestamp(ts)
+		if err != nil {
+			return &Err{err}
 		}
-	case 1:
-		if f, found := timestampOneArgOverloads[function]; found {
-			return f(tstamp, args[0])
-		}
+		return f(tstamp, arg)
 	}
 	return NewErr("no such overload")
 }
