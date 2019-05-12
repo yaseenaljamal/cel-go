@@ -640,7 +640,8 @@ func (r *identRef) Eval(vars Activation) ref.Val {
 	if val != nil {
 		return val
 	}
-	return types.Unknown{r.id}
+	return types.NewErr("no such identifier: %v", r.names)
+
 }
 
 type fieldRef struct {
@@ -818,7 +819,7 @@ func (r *oneofRef) Eval(vars Activation) ref.Val {
 			return r.adapter.NativeToValue(val)
 		}
 	}
-	return types.NewErr("no such reference")
+	return types.NewErr("no such identifier: %v", r.refs)
 }
 
 func (r *oneofRef) Get(vars Activation) interface{} {

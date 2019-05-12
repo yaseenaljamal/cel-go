@@ -53,12 +53,12 @@ func TestTimestamp_Subtract(t *testing.T) {
 func TestTimestamp_ReceiveGetMonth(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	hr := ts.Receive(overloads.TimeGetMonth, overloads.TimestampToMonth)
+	hr := ts.ReceiveUnary(overloads.TimeGetMonth, overloads.TimestampToMonth)
 	if !hr.Equal(Int(0)).(Bool) {
 		t.Error("Expected 0, got", hr)
 	}
 	// 1969-12-31T19:05:05Z
-	hrTz := ts.Receive(overloads.TimeGetMonth, overloads.TimestampToMonthWithTz,
+	hrTz := ts.ReceiveBinary(overloads.TimeGetMonth, overloads.TimestampToMonthWithTz,
 		String("America/Phoenix"))
 	if !hrTz.Equal(Int(11)).(Bool) {
 		t.Error("Expected 11, got", hrTz)
@@ -68,12 +68,12 @@ func TestTimestamp_ReceiveGetMonth(t *testing.T) {
 func TestTimestamp_ReceiveGetHours(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	hr := ts.Receive(overloads.TimeGetHours, overloads.TimestampToHours)
+	hr := ts.ReceiveUnary(overloads.TimeGetHours, overloads.TimestampToHours)
 	if !hr.Equal(Int(2)).(Bool) {
 		t.Error("Expected 2 hours, got", hr)
 	}
 	// 1969-12-31T19:05:05Z
-	hrTz := ts.Receive(overloads.TimeGetHours, overloads.TimestampToHoursWithTz,
+	hrTz := ts.ReceiveBinary(overloads.TimeGetHours, overloads.TimestampToHoursWithTz,
 		String("America/Phoenix"))
 	if !hrTz.Equal(Int(19)).(Bool) {
 		t.Error("Expected 19 hours, got", hrTz)
@@ -83,12 +83,12 @@ func TestTimestamp_ReceiveGetHours(t *testing.T) {
 func TestTimestamp_ReceiveGetMinutes(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	min := ts.Receive(overloads.TimeGetMinutes, overloads.TimestampToMinutes)
+	min := ts.ReceiveUnary(overloads.TimeGetMinutes, overloads.TimestampToMinutes)
 	if !min.Equal(Int(5)).(Bool) {
 		t.Error("Expected 5 minutes, got", min)
 	}
 	// 1969-12-31T19:05:05Z
-	minTz := ts.Receive(overloads.TimeGetMinutes, overloads.TimestampToMinutesWithTz,
+	minTz := ts.ReceiveBinary(overloads.TimeGetMinutes, overloads.TimestampToMinutesWithTz,
 		String("America/Phoenix"))
 	if !minTz.Equal(Int(5)).(Bool) {
 		t.Error("Expected 5 minutes, got", minTz)
@@ -98,12 +98,12 @@ func TestTimestamp_ReceiveGetMinutes(t *testing.T) {
 func TestTimestamp_ReceiveGetSeconds(t *testing.T) {
 	// 1970-01-01T02:05:05Z
 	ts := Timestamp{&tpb.Timestamp{Seconds: 7506}}
-	sec := ts.Receive(overloads.TimeGetSeconds, overloads.TimestampToSeconds)
+	sec := ts.ReceiveUnary(overloads.TimeGetSeconds, overloads.TimestampToSeconds)
 	if !sec.Equal(Int(6)).(Bool) {
 		t.Error("Expected 6 seconds, got", sec)
 	}
 	// 1969-12-31T19:05:05Z
-	secTz := ts.Receive(overloads.TimeGetSeconds, overloads.TimestampToSecondsWithTz,
+	secTz := ts.ReceiveBinary(overloads.TimeGetSeconds, overloads.TimestampToSecondsWithTz,
 		String("America/Phoenix"))
 	if !secTz.Equal(Int(6)).(Bool) {
 		t.Error("Expected 6 seconds, got", secTz)

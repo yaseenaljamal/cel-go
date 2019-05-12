@@ -27,6 +27,8 @@ import (
 //
 // An Activation is the primary mechanism by which a caller supplies input into a CEL program.
 type Activation interface {
+	ExtendWith(bindings interface{}) (Activation, error)
+
 	// Find returns a value from the activation by qualified name, or false if the name
 	// could not be found.
 	Find(name string) (interface{}, bool)
@@ -96,14 +98,20 @@ func NewAdaptingActivation(adapter ref.TypeAdapter, bindings interface{}) (Activ
 type mapActivation struct {
 	adapter  ref.TypeAdapter
 	bindings map[string]interface{}
+	parent   Activation
 }
 
-// Parent implements the Activation interface method.
-func (a *mapActivation) Parent() Activation {
-	return nil
+func (a *mapActivation) ExtendWith(bindings interface{}) (Activation, error) {
+	child, err := NewAdaptingActivation(a.adapter, bindings)
+	if err != nil {
+		return nil, err
+	}
+	curr := child.(*mapActivation)
+	curr.parent = a
+	return curr, nil
 }
 
-// ResolveName implements the Activation interface method.
+// Find implements the Activation interface method.
 func (a *mapActivation) Find(name string) (interface{}, bool) {
 	if object, found := a.bindings[name]; found {
 		switch object.(type) {
@@ -116,87 +124,19 @@ func (a *mapActivation) Find(name string) (interface{}, bool) {
 			return object, true
 		}
 	}
+	if a.parent != nil {
+		return a.parent.Find(name)
+	}
 	return nil, false
+}
+
+// Parent implements the Activation interface method.
+func (a *mapActivation) Parent() Activation {
+	return a.parent
 }
 
 func (a *mapActivation) Resolve(id int64, getter CtxGetter) ref.Val {
 	return a.adapter.NativeToValue(getter.Get(a))
-}
-
-// hierarchicalActivation which implements Activation and contains a parent and
-// child activation.
-type hierarchicalActivation struct {
-	parent Activation
-	child  Activation
-}
-
-// Parent implements the Activation interface method.
-func (a *hierarchicalActivation) Parent() Activation {
-	return a.parent
-}
-
-// ResolveName implements the Activation interface method.
-func (a *hierarchicalActivation) Find(name string) (interface{}, bool) {
-	if object, found := a.child.Find(name); found {
-		return object, found
-	}
-	return a.parent.Find(name)
-}
-
-func (a *hierarchicalActivation) Resolve(id int64, getter CtxGetter) ref.Val {
-	obj := a.child.Resolve(id, getter)
-	if obj != nil {
-		return obj
-	}
-	return a.parent.Resolve(id, getter)
-}
-
-// NewHierarchicalActivation takes two activations and produces a new one which prioritizes
-// resolution in the child first and parent(s) second.
-func NewHierarchicalActivation(parent Activation, child Activation) Activation {
-	return &hierarchicalActivation{parent, child}
-}
-
-type memoActivation struct {
-	proxy Activation
-	resolved map[int64]ref.Val
-}
-
-func (a *memoActivation) Find(name string) (interface{}, bool) {
-	return a.proxy.Find(name)
-}
-
-func (a *memoActivation) Parent() Activation {
-	return a.proxy.Parent()
-}
-
-func (a *memoActivation) Resolve(id int64, getter CtxGetter) ref.Val {
-	out, found := a.resolved[id]
-	if found {
-		return out
-	}
-	defer func() {
-		if out != nil {
-			a.resolved[id] = out
-		}
-	}()
-	out = a.proxy.Resolve(id, getter)
-	return out
-}
-
-func MemoizeActivation(a Activation) Activation {
-	return &memoActivation{
-		proxy: a,
-		resolved: make(map[int64]ref.Val),
-	}
-}
-
-// newVarActivation returns a new varActivation instance.
-func newVarActivation(parent Activation, name string) *varActivation {
-	return &varActivation{
-		parent: parent,
-		name:   name,
-	}
 }
 
 // varActivation represents a single mutable variable binding.
@@ -209,17 +149,30 @@ type varActivation struct {
 	val    ref.Val
 }
 
-// Parent implements the Activation interface method.
-func (v *varActivation) Parent() Activation {
-	return v.parent
+// newVarActivation returns a new varActivation instance.
+func newVarActivation(parent Activation, name string) *varActivation {
+	return &varActivation{
+		parent: parent,
+		name:   name,
+	}
 }
 
-// ResolveName implements the Activation interface method.
+// ExtendWith implements the Activation interface method.
+func (v *varActivation) ExtendWith(bindings interface{}) (Activation, error) {
+	panic("unexpected extension of varActivation")
+}
+
+// Find implements the Activation interface method.
 func (v *varActivation) Find(name string) (interface{}, bool) {
 	if name == v.name {
 		return v.val, true
 	}
 	return v.parent.Find(name)
+}
+
+// Parent implements the Activation interface method.
+func (v *varActivation) Parent() Activation {
+	return v.parent
 }
 
 func (v *varActivation) Resolve(id int64, getter CtxGetter) ref.Val {

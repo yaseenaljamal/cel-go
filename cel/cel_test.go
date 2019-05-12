@@ -374,7 +374,7 @@ func Test_GlobalVars(t *testing.T) {
 			t.Errorf("Got '%v', expected 'third'.", out.Value())
 		}
 	})
-
+/*
 	t.Run("attrs_alt", func(t *testing.T) {
 		vars := map[string]interface{}{
 			"attrs": map[string]interface{}{"second": "yep"}}
@@ -392,7 +392,7 @@ func Test_GlobalVars(t *testing.T) {
 		if out.Equal(types.String("fourth")) != types.True {
 			t.Errorf("Got '%v', expected 'fourth'.", out.Value())
 		}
-	})
+	}) */
 }
 
 func Test_EvalOptions(t *testing.T) {

@@ -92,8 +92,8 @@ func TestExhaustiveInterpreter_ConditionalExprErr(t *testing.T) {
 	if ev != types.True {
 		t.Errorf("Else expression expected to be true, got: %v", ev)
 	}
-	if result.Type() != types.UnknownType {
-		t.Errorf("Expected unknown result, got: %v", result)
+	if !types.IsError(result) {
+		t.Errorf("Got: %v, expected error", result)
 	}
 }
 
@@ -214,9 +214,9 @@ func TestInterpreter_LongQualifiedIdent(t *testing.T) {
 func TestInterpreter_FieldAccess(t *testing.T) {
 	parsed := parseExpr(t, `val.input.expr.id == 10`)
 	i, _ := interpreter.NewUncheckedInterpretable(parsed.GetExpr())
-	unk := i.Eval(EmptyActivation())
-	if !types.IsUnknown(unk) {
-		t.Errorf("Got %v, wanted unknown", unk)
+	e := i.Eval(EmptyActivation())
+	if !types.IsError(e) {
+		t.Errorf("Got %v, wanted error", e)
 	}
 	vars, _ := NewActivation(map[string]interface{}{
 		"val.input": reg.NativeToValue(

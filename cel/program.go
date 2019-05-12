@@ -207,7 +207,10 @@ func (p *prog) Eval(input interface{}) (v ref.Val, det EvalDetails, err error) {
 		return
 	}
 	if p.defaultVars != nil {
-		vars = interpreter.NewHierarchicalActivation(p.defaultVars, vars)
+		vars, err = p.defaultVars.ExtendWith(vars)
+		if err != nil {
+			return
+		}
 	}
 	v = p.interpretable.Eval(vars)
 	// The output of an internal Eval may have a value (`v`) that is a types.Err. This step

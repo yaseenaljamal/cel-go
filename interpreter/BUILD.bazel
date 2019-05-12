@@ -12,6 +12,7 @@ go_library(
         "decorators.go",
         "dispatcher.go",
         "evalstate.go",
+        "interpretable.go",
         "interpreter.go",
         "planner.go",
         "prune.go",

@@ -156,14 +156,14 @@ func TestString_Match(t *testing.T) {
 }
 
 func TestString_Contains(t *testing.T) {
-	y := String("goodbye").Receive(
+	y := String("goodbye").ReceiveBinary(
 		overloads.Contains,
 		overloads.ContainsString,
 		String("db"))
 	if y != True {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
-	n := String("goodbye").Receive(
+	n := String("goodbye").ReceiveBinary(
 		overloads.Contains,
 		overloads.ContainsString,
 		String("ggood"))
@@ -173,14 +173,14 @@ func TestString_Contains(t *testing.T) {
 }
 
 func TestString_EndsWith(t *testing.T) {
-	y := String("goodbye").Receive(
+	y := String("goodbye").ReceiveBinary(
 		overloads.EndsWith,
 		overloads.EndsWithString,
 		String("bye"))
 	if y == False {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
-	n := String("goodbye").Receive(
+	n := String("goodbye").ReceiveBinary(
 		overloads.EndsWith,
 		overloads.EndsWithString,
 		String("good"))
@@ -190,14 +190,14 @@ func TestString_EndsWith(t *testing.T) {
 }
 
 func TestString_StartsWith(t *testing.T) {
-	y := String("goodbye").Receive(
+	y := String("goodbye").ReceiveBinary(
 		overloads.StartsWith,
 		overloads.StartsWithString,
 		String("good"))
 	if y != True {
 		t.Errorf("Got '%v', expected 'true'", y)
 	}
-	n := String("goodbye").Receive(
+	n := String("goodbye").ReceiveBinary(
 		overloads.StartsWith,
 		overloads.StartsWithString,
 		String("db"))
