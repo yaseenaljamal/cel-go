@@ -106,9 +106,12 @@ func (a *mapActivation) ExtendWith(bindings interface{}) (Activation, error) {
 	if err != nil {
 		return nil, err
 	}
-	curr := child.(*mapActivation)
-	curr.parent = a
-	return curr, nil
+	curr, isMapAct := child.(*mapActivation)
+	if isMapAct {
+		curr.parent = a
+		return curr, nil
+	}
+	return nil, fmt.Errorf("unsupported extension binding type: %T", bindings)
 }
 
 // Find implements the Activation interface method.
