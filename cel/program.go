@@ -202,7 +202,7 @@ func (p *prog) Eval(input interface{}) (v ref.Val, det EvalDetails, err error) {
 		}
 	}()
 	// Build a hierarchical activation if there are default vars set.
-	vars, err := interpreter.NewAdaptingActivation(p.adapter, input)
+	vars, err := interpreter.NewActivation(input)
 	if err != nil {
 		return
 	}

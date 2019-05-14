@@ -18,8 +18,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
-
 	"github.com/google/cel-go/checker"
 	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common"
@@ -33,6 +31,7 @@ import (
 	"github.com/google/cel-go/test/proto2pb"
 	"github.com/google/cel-go/test/proto3pb"
 
+	"github.com/golang/protobuf/proto"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -107,7 +106,7 @@ func TestExhaustiveInterpreter_LogicalOrEquals(t *testing.T) {
 	interp := NewStandardInterpreter(packages.NewPackage("test"), reg, reg)
 	i, _ := interp.NewUncheckedInterpretable(test.LogicalOrEquals.Expr,
 		ExhaustiveEval(state))
-	vars, _ := NewAdaptingActivation(reg, map[string]interface{}{
+	vars, _ := NewActivation(map[string]interface{}{
 		"a": true,
 		"b": "b",
 	})
@@ -153,7 +152,7 @@ func TestInterpreter_ConditionalExpr(t *testing.T) {
 	// a ? b < 1.0 : c == ["hello"]
 	// Operator "<" is at Expr 3, "_==_" is at Expr 6.
 	i, _ := interpreter.NewUncheckedInterpretable(test.Conditional.Expr)
-	vars, _ := NewAdaptingActivation(reg, map[string]interface{}{
+	vars, _ := NewActivation(map[string]interface{}{
 		"a": true,
 		"b": 0.999,
 		"c": types.NewStringList(reg, []string{"hello"})})
@@ -724,6 +723,40 @@ func BenchmarkInterpreter_ComprehensionExprWithInput(b *testing.B) {
 	}
 }
 
+func BenchmarkInterpreter_Equality(b *testing.B) {
+	cons := &evalConst{
+		id: 2,
+		val: types.String("hello"),
+	}
+	ident := &identRef{
+		id: 1,
+		names: []string{"a"},
+		adapter: types.DefaultTypeAdapter,
+	}
+	eq := &evalEq{
+		id: 3,
+		lhs: ident,
+		rhs: cons,
+	}
+	act, _ := NewActivation(map[string]interface{}{
+		"a": "hello",
+	})
+	insts := map[string]Interpretable{
+		"const": cons,
+		"ident": ident,
+		"equal": eq,
+	}
+	for name, inst := range insts {
+		b.Run(name, func(bb *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < bb.N; i++ {
+				inst.Eval(act)
+			}
+		})
+	}
+}
+
 func BenchmarkInterpreter_CanonicalExpressions(b *testing.B) {
 	for _, tst := range testData {
 		s := common.NewTextSource(tst.E)
@@ -740,6 +773,7 @@ func BenchmarkInterpreter_CanonicalExpressions(b *testing.B) {
 			decls.NewIdent("headers.ip", decls.String, nil),
 			decls.NewIdent("headers.path", decls.String, nil),
 			decls.NewIdent("headers.token", decls.String, nil),
+			decls.NewIdent("json", decls.Dyn, nil),
 		)
 		checked, _ := checker.Check(parsed, s, env)
 		disp := NewDispatcher()
@@ -799,6 +833,22 @@ var (
 			name: `ExprBench/false_2nd`,
 			E:    `true && false`,
 			I:    map[string]interface{}{},
+		},
+		{
+			name: `ExprBench/json`,
+			E:    `request.auth.claims[request.auth.domain][0].name == 'tswadell'`,
+			I:    map[string]interface{}{
+				"request": map[string]interface{}{
+					"auth": map[string]interface{}{
+						"domain": "acme.co",
+						"claims": map[string]interface{}{
+							"acme.co": []interface{}{
+								map[string]string{"name": "tswadell"},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: `ExprBench/complex`,

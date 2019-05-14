@@ -76,6 +76,10 @@ func (cons *evalConst) ID() int64 {
 	return cons.id
 }
 
+func (cons *evalConst) Get(vars Activation) interface{} {
+	return cons.val
+}
+
 // Eval implements the Interpretable interface method.
 func (cons *evalConst) Eval(ctx Activation) ref.Val {
 	return cons.val

@@ -36,12 +36,6 @@ type Activation interface {
 	// Parent returns the parent of the current activation, may be nil.
 	// If non-nil, the parent will be searched during resolve calls.
 	Parent() Activation
-
-	Resolve(int64, CtxGetter) ref.Val
-}
-
-type CtxGetter interface {
-   Get(Activation) interface{}
 }
 
 // EmptyActivation returns a variable free activation.
@@ -59,22 +53,6 @@ func EmptyActivation() Activation {
 // When the bindings are a `map` form whose values are not of `ref.Val` type, the values will be
 // converted to CEL values (if possible) using the `types.DefaultTypeAdapter`.
 func NewActivation(bindings interface{}) (Activation, error) {
-	return NewAdaptingActivation(types.DefaultTypeAdapter, bindings)
-}
-
-// NewAdaptingActivation returns an actvation which is capable of adapting `bindings` from native
-// Go values to equivalent CEL `ref.Val` objects.
-//
-// The input `bindings` may either be of type `Activation` or `map[string]interface{}`.
-//
-// When the bindings are a `map` the values may be one of the following types:
-//   - `ref.Val`: a CEL value instance.
-//   - `func() ref.Val`: a CEL value supplier.
-//   - other: a native value which must be converted to a CEL `ref.Val` by the `adapter`.
-func NewAdaptingActivation(adapter ref.TypeAdapter, bindings interface{}) (Activation, error) {
-	if adapter == nil {
-		return nil, errors.New("adapter must be non-nil")
-	}
 	if bindings == nil {
 		return nil, errors.New("bindings must be non-nil")
 	}
@@ -88,7 +66,7 @@ func NewAdaptingActivation(adapter ref.TypeAdapter, bindings interface{}) (Activ
 			"activation input must be an activation or map[string]interface: got %T",
 			bindings)
 	}
-	return &mapActivation{adapter: adapter, bindings: m}, nil
+	return &mapActivation{bindings: m}, nil
 }
 
 // mapActivation which implements Activation and maps of named values.
@@ -96,13 +74,12 @@ func NewAdaptingActivation(adapter ref.TypeAdapter, bindings interface{}) (Activ
 // Named bindings may lazily supply values by providing a function which accepts no arguments and
 // produces an interface value.
 type mapActivation struct {
-	adapter  ref.TypeAdapter
 	bindings map[string]interface{}
 	parent   Activation
 }
 
 func (a *mapActivation) ExtendWith(bindings interface{}) (Activation, error) {
-	child, err := NewAdaptingActivation(a.adapter, bindings)
+	child, err := NewActivation(bindings)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +99,8 @@ func (a *mapActivation) Find(name string) (interface{}, bool) {
 		case func() ref.Val:
 			val := object.(func() ref.Val)()
 			return val, true
+		case nil:
+			return types.NullValue, true
 		// Otherwise, return the bound value.
 		default:
 			return object, true
@@ -136,10 +115,6 @@ func (a *mapActivation) Find(name string) (interface{}, bool) {
 // Parent implements the Activation interface method.
 func (a *mapActivation) Parent() Activation {
 	return a.parent
-}
-
-func (a *mapActivation) Resolve(id int64, getter CtxGetter) ref.Val {
-	return a.adapter.NativeToValue(getter.Get(a))
 }
 
 // varActivation represents a single mutable variable binding.
@@ -162,7 +137,7 @@ func newVarActivation(parent Activation, name string) *varActivation {
 
 // ExtendWith implements the Activation interface method.
 func (v *varActivation) ExtendWith(bindings interface{}) (Activation, error) {
-	panic("unexpected extension of varActivation")
+	return nil, fmt.Errorf("unexpected extension of varActivation")
 }
 
 // Find implements the Activation interface method.
@@ -176,14 +151,6 @@ func (v *varActivation) Find(name string) (interface{}, bool) {
 // Parent implements the Activation interface method.
 func (v *varActivation) Parent() Activation {
 	return v.parent
-}
-
-func (v *varActivation) Resolve(id int64, getter CtxGetter) ref.Val {
-	obj := getter.Get(v)
-	if obj != nil {
-		return obj.(ref.Val)
-	}
-	return v.parent.Resolve(id, getter)
 }
 
 var (

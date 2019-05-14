@@ -402,6 +402,13 @@ func (p *planner) planCallIndex(expr *exprpb.Expr,
 				return sel, nil
 			}
 		}
+		x, isRef := arg.(ctxReference)
+		if isRef {
+			sel := ctxRef.Select(expr.Id, x)
+			if sel != nil {
+				return sel, nil
+			}
+		}
 	}
 	return nil, nil
 }
@@ -602,8 +609,8 @@ func (p *planner) newIdentRef(id int64, names []string) ctxReference {
 
 type ctxReference interface {
 	Interpretable
-	CtxGetter
-	Select(int64, ref.Val) ctxReference
+	Get(Activation) interface{}
+	Select(int64, interface{}) ctxReference
 }
 
 type identRef struct {
@@ -617,7 +624,7 @@ func (r *identRef) ID() int64 {
 	return r.id
 }
 
-func (r *identRef) Select(id int64, val ref.Val) ctxReference {
+func (r *identRef) Select(id int64, val interface{}) ctxReference {
 	return defaultSelector(id, r, r.adapter, val)
 }
 
@@ -636,17 +643,16 @@ func (r *identRef) Get(vars Activation) interface{} {
 }
 
 func (r *identRef) Eval(vars Activation) ref.Val {
-	val := vars.Resolve(r.id, r)
+	val := r.Get(vars)
 	if val != nil {
-		return val
+		return r.adapter.NativeToValue(val)
 	}
 	return types.NewErr("no such identifier: %v", r.names)
-
 }
 
 type fieldRef struct {
 	id    int64
-	op    CtxGetter
+	op    ctxReference
 	field types.String
 	adapter ref.TypeAdapter
 }
@@ -655,44 +661,28 @@ func (r *fieldRef) ID() int64 {
 	return r.id
 }
 
-func (r *fieldRef) Select(id int64, val ref.Val) ctxReference {
+func (r *fieldRef) Select(id int64, val interface{}) ctxReference {
 	return defaultSelector(id, r, r.adapter, val)
 }
 
 func (r *fieldRef) Get(vars Activation) interface{} {
-	opVal := r.op.Get(vars)
-	if opVal == nil {
+	op := r.op.Get(vars)
+	if op == nil {
 		return nil
 	}
-	switch opVal.(type) {
-	case map[string]string:
-		m := opVal.(map[string]string)
-		k := string(r.field)
-		return types.String(m[k])
-	case map[string]interface{}:
-		m := opVal.(map[string]interface{})
-		k := string(r.field)
-		return m[k]
-	case traits.Indexer:
-		obj := opVal.(traits.Indexer)
-		return obj.Get(r.field)
-	case ref.Val:
-		return types.ValOrErr(opVal.(ref.Val), "no such overload")
-	default:
-		celVal := r.adapter.NativeToValue(opVal)
-		if types.IsUnknownOrError(celVal) {
-			return types.NewErr("cannot adapt type: %T", opVal)
-		}
-		obj, ok := celVal.(traits.Indexer)
-		if !ok {
-			return types.NewErr("no such overload")
-		}
-		return obj.Get(r.field)
+	val := getKeyValue(op, r.field)
+	if val != nil {
+		return val
 	}
+	return getElemValue(r.adapter, op, r.field)
 }
 
 func (r *fieldRef) Eval(vars Activation) ref.Val {
-	return vars.Resolve(r.id, r)
+	val := r.Get(vars)
+	if val != nil {
+		return r.adapter.NativeToValue(val)
+	}
+	return types.NewErr("no such field: %v", r.field)
 }
 
 type indexRef struct {
@@ -706,78 +696,28 @@ func (r *indexRef) ID() int64 {
 	return r.id
 }
 
-func (r *indexRef) Select(id int64, val ref.Val) ctxReference {
+func (r *indexRef) Select(id int64, val interface{}) ctxReference {
 	return defaultSelector(id, r, r.adapter, val)
 }
 
 func (r *indexRef) Get(vars Activation) interface{} {
-	opVal := r.op.Get(vars)
-	if opVal == nil {
+	op := r.op.Get(vars)
+	if op == nil {
 		return nil
 	}
-	switch opVal.(type) {
-	case []string:
-		l := opVal.([]string)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.String(l[idx])
-	case []int:
-		l := opVal.([]int)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.Int(l[idx])
-	case []int32:
-		l := opVal.([]int32)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.Int(l[idx])
-	case []int64:
-		l := opVal.([]int64)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.Int(l[idx])
-	case []float32:
-		l := opVal.([]float32)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.Double(l[idx])
-	case []float64:
-		l := opVal.([]float64)
-		idx := int(r.idx)
-		if idx < 0 || idx >= len(l) {
-			return types.NewErr("index out of range: %d", idx)
-		}
-		return types.Double(l[idx])
-	case traits.Lister:
-		l := opVal.(traits.Lister)
-		return l.Get(r.idx)
-	case ref.Val:
-		return types.ValOrErr(opVal.(ref.Val), "no such overload")
-	default:
-		celVal := r.adapter.NativeToValue(opVal)
-		if types.IsUnknownOrError(celVal) {
-			return types.NewErr("cannot adapt type: %T", opVal)
-		}
-		obj, ok := celVal.(traits.Indexer)
-		if !ok {
-			return types.NewErr("no such overload")
-		}
-		return obj.Get(r.idx)
+	val := getIndexValue(op, r.idx)
+	if val != nil {
+		return val
 	}
+	return getElemValue(r.adapter, op, r.idx)
 }
 
 func (r *indexRef) Eval(vars Activation) ref.Val {
-	return vars.Resolve(r.id, r)
+	val := r.Get(vars)
+	if val != nil {
+		return r.adapter.NativeToValue(val)
+	}
+	return types.NewErr("no such index: %v", r.idx)
 }
 
 type oneofRef struct {
@@ -789,12 +729,13 @@ func (r *oneofRef) ID() int64 {
 	return r.refs[0].ID()
 }
 
-func (r *oneofRef) Select(id int64, val ref.Val) ctxReference {
+func (r *oneofRef) Select(id int64, val interface{}) ctxReference {
 	var expandedRefs []ctxReference
 	for _, oneof := range r.refs {
 		ident, ok := oneof.(*identRef)
-		if ok && val.Type() == types.StringType {
-			field := string(val.(types.String))
+		field, isStr := val.(types.String)
+		if ok && isStr {
+			field := string(field)
 			oldNames := ident.names
 			expandedNames := make([]string, len(oldNames), len(oldNames))
 			for i, n := range oldNames {
@@ -832,23 +773,158 @@ func (r *oneofRef) Get(vars Activation) interface{} {
 	return nil
 }
 
+type crossRef struct {
+	id  int64
+	op  ctxReference
+	elem ctxReference
+	adapter ref.TypeAdapter
+}
+
+func (r *crossRef) ID() int64 {
+	return r.id
+}
+
+func (r *crossRef) Select(id int64, val interface{}) ctxReference {
+	return defaultSelector(id, r, r.adapter, val)
+}
+
+func (r *crossRef) Get(vars Activation) interface{} {
+	op := r.op.Get(vars)
+	if op == nil {
+		return nil
+	}
+	elem := r.elem.Get(vars)
+	if elem == nil {
+		return types.NewErr("no such key")
+	}
+	elemVal := r.adapter.NativeToValue(elem)
+	switch elemVal.(type) {
+	case types.String:
+		val := getKeyValue(op, elemVal.(types.String))
+		if val != nil {
+			return val
+		}
+	case types.Int:
+		val := getIndexValue(op, elemVal.(types.Int))
+		if val != nil {
+			return val
+		}
+	}
+	return getElemValue(r.adapter, op, elemVal)
+}
+
+func (r *crossRef) Eval(vars Activation) ref.Val {
+	val := r.Get(vars)
+	if val != nil {
+		return r.adapter.NativeToValue(val)
+	}
+	return types.NewErr("no such key")
+}
+
+func getKeyValue(obj interface{}, key types.String) interface{} {
+	switch obj.(type) {
+	case map[string]string:
+		m := obj.(map[string]string)
+		return types.String(m[string(key)])
+	case map[string]interface{}:
+		m := obj.(map[string]interface{})
+		return m[string(key)]
+	}
+	return nil
+}
+
+func getIndexValue(obj interface{}, index types.Int) interface{} {
+	idx := int(index)
+	switch obj.(type) {
+	case []string:
+		l := obj.([]string)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.String(l[idx])
+	case []int:
+		l := obj.([]int)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []int32:
+		l := obj.([]int32)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []int64:
+		l := obj.([]int64)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Int(l[idx])
+	case []float32:
+		l := obj.([]float32)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Double(l[idx])
+	case []float64:
+		l := obj.([]float64)
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return types.Double(l[idx])
+	case []interface{}:
+		l := obj.([]interface{})
+		if idx < 0 || idx >= len(l) {
+			return types.NewErr("index out of range: %d", idx)
+		}
+		return l[idx]
+	}
+	return nil
+}
+
+func getElemValue(adapter ref.TypeAdapter, obj interface{}, elem ref.Val) interface{} {
+	switch obj.(type) {
+	case traits.Indexer:
+		objVal := obj.(traits.Indexer)
+		return objVal.Get(elem)
+	case ref.Val:
+		return types.ValOrErr(obj.(ref.Val), "no such overload")
+	}
+	celVal := adapter.NativeToValue(obj)
+	if types.IsUnknownOrError(celVal) {
+		return types.NewErr("cannot adapt type: %T", obj)
+	}
+	indexer, ok := celVal.(traits.Indexer)
+	if !ok {
+		return types.NewErr("no such overload")
+	}
+	return indexer.Get(elem)
+}
+
 func defaultSelector(id int64,
 	 op ctxReference,
 	 adapter ref.TypeAdapter,
-	 val ref.Val) ctxReference {
-	switch val.Type() {
-	case types.StringType:
+	 val interface{}) ctxReference {
+	switch val.(type) {
+	case types.String:
 		return &fieldRef{
 			id:    id,
 			op:    op,
 			adapter: adapter,
 			field: val.(types.String)}
-	case types.IntType:
+	case types.Int:
 		return &indexRef{
 			id:  id,
 			op:  op,
 			adapter: adapter,
 			idx: val.(types.Int)}
+	case ctxReference:
+		return &crossRef{
+			id: id,
+			op: op,
+			adapter: adapter,
+			elem: val.(ctxReference),
+		}
 	}
 	return nil
 }
