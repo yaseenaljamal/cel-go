@@ -1,7 +1,20 @@
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package pb
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -101,12 +114,6 @@ func TestTypeDescription_Field(t *testing.T) {
 	}
 	// Access the field by its Go struct name and check to see that it's index
 	// matches the one determined by the TypeDescription utils.
-	field, _ := reflect.TypeOf(msg).FieldByName("Payload")
-	if fd.Index() != field.Index[0] {
-		t.Errorf("Field 'payload' was declared at index %d, but wanted %d.",
-			field.Index[0],
-			fd.Index())
-	}
 	if !proto.Equal(fd.CheckedType(), &exprpb.Type{
 		TypeKind: &exprpb.Type_MessageType{
 			MessageType: "google.expr.proto3.test.TestAllTypes"}}) {

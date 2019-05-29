@@ -15,7 +15,7 @@ package google.expr.proto3.test;
 message TestAllTypes {
   message NestedMessage {
     // The field name "b" fails to compile in proto1 because it conflicts with
-    // a local variable named "b" in one of the generated methods.  Doh.
+    // a local variable named "b" in one of the generated methods.
     // This file needs to compile in proto1 to test backwards-compatibility.
     int32 bb = 1;
   }
@@ -50,7 +50,15 @@ message TestAllTypes {
   google.protobuf.Struct single_struct = 103;
   google.protobuf.Value single_value = 104;
   google.protobuf.Int64Value single_int64_wrapper = 105;
-
+  google.protobuf.Int32Value single_int32_wrapper = 106;
+  google.protobuf.DoubleValue single_double_wrapper = 107;
+  google.protobuf.FloatValue single_float_wrapper = 108;
+  google.protobuf.UInt64Value single_uint64_wrapper = 109;
+  google.protobuf.UInt32Value single_uint32_wrapper = 110;
+  google.protobuf.StringValue single_string_wrapper = 111;
+  google.protobuf.BoolValue single_bool_wrapper = 112;
+  google.protobuf.BytesValue single_bytes_wrapper = 113;
+  
   // Nested messages
   oneof nested_type {
     NestedMessage single_nested_message = 18;

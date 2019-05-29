@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
+
 	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/operators"
@@ -183,77 +184,6 @@ ERROR: <input>:1:1: undeclared reference to 'foo' (in container '')
 		Type: decls.NewListType(decls.Int),
 		Env:  testEnvs["default"],
 	},
-
-	// Tests from Java implementation
-	{
-		I:    `[] + [1,2,3,] + [4]`,
-		Type: decls.NewListType(decls.Int),
-		R: `
-	_+_(
-		_+_(
-			[]~list(int),
-			[1~int, 2~int, 3~int]~list(int))~list(int)^add_list,
-			[4~int]~list(int))
-	~list(int)^add_list
-	`,
-	},
-
-	{
-		I: `[1, 2u] + []`,
-		R: `_+_(
-			[
-				1~int,
-				2u~uint
-			]~list(dyn),
-			[]~list(dyn)
-		)~list(dyn)^add_list`,
-		Type: decls.NewListType(decls.Dyn),
-	},
-
-	{
-		I:    `{1:2u, 2:3u}`,
-		Type: decls.NewMapType(decls.Int, decls.Uint),
-		R:    `{1~int : 2u~uint, 2~int : 3u~uint}~map(int, uint)`,
-	},
-
-	{
-		I:    `{"a":1, "b":2}.a`,
-		Type: decls.Int,
-		R:    `{"a"~string : 1~int, "b"~string : 2~int}~map(string, int).a~int`,
-	},
-	{
-		I:    `{1:2u, 2u:3}`,
-		Type: decls.NewMapType(decls.Dyn, decls.Dyn),
-		R:    `{1~int : 2u~uint, 2u~uint : 3~int}~map(dyn, dyn)`,
-	},
-	{
-		I:         `TestAllTypes{single_int32: 1, single_int64: 2}`,
-		Container: "google.expr.proto3.test",
-		R: `
-	TestAllTypes{single_int32 : 1~int, single_int64 : 2~int}
-	  ~google.expr.proto3.test.TestAllTypes
-	    ^google.expr.proto3.test.TestAllTypes`,
-		Type: decls.NewObjectType("google.expr.proto3.test.TestAllTypes"),
-	},
-
-	{
-		I:         `TestAllTypes{single_int32: 1u}`,
-		Container: "google.expr.proto3.test",
-		Error: `
-	ERROR: <input>:1:26: expected type of field 'single_int32' is 'int' but provided type is 'uint'
-	  | TestAllTypes{single_int32: 1u}
-	  | .........................^`,
-	},
-
-	{
-		I:         `TestAllTypes{single_int32: 1, undefined: 2}`,
-		Container: "google.expr.proto3.test",
-		Error: `
-	ERROR: <input>:1:40: undefined field 'undefined'
-	  | TestAllTypes{single_int32: 1, undefined: 2}
-	  | .......................................^`,
-	},
-
 	{
 		I: `size(x) == x.size()`,
 		R: `
@@ -274,7 +204,6 @@ _+_(int(1u~uint)~int^uint64_to_int64,
   ~int^add_int64`,
 		Type: decls.Int,
 	},
-
 	{
 		I: `false && !true || false ? 2 : 3`,
 		R: `
@@ -287,13 +216,11 @@ _?_:_(_||_(_&&_(false~bool, !_(true~bool)~bool^logical_not)~bool^logical_and,
 `,
 		Type: decls.Int,
 	},
-
 	{
 		I:    `b"abc" + b"def"`,
 		R:    `_+_(b"abc"~bytes, b"def"~bytes)~bytes^add_bytes`,
 		Type: decls.Bytes,
 	},
-
 	{
 		I: `1.0 + 2.0 * 3.0 - 1.0 / 2.20202 != 66.6`,
 		R: `
@@ -305,19 +232,16 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
   ~bool^not_equals`,
 		Type: decls.Bool,
 	},
-
 	{
 		I:    `1 + 2 * 3 - 1 / 2 == 6 % 1`,
 		R:    ` _==_(_-_(_+_(1~int, _*_(2~int, 3~int)~int^multiply_int64)~int^add_int64, _/_(1~int, 2~int)~int^divide_int64)~int^subtract_int64, _%_(6~int, 1~int)~int^modulo_int64)~bool^equals`,
 		Type: decls.Bool,
 	},
-
 	{
 		I:    `"abc" + "def"`,
 		R:    `_+_("abc"~string, "def"~string)~string^add_string`,
 		Type: decls.String,
 	},
-
 	{
 		I: `1u + 2u * 3u - 1u / 2u == 6u % 1u`,
 		R: `_==_(_-_(_+_(1u~uint, _*_(2u~uint, 3u~uint)~uint^multiply_uint64)
@@ -329,6 +253,72 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 		Type: decls.Bool,
 	},
 
+	// List, map, and object construction.
+	{
+		I:    `[] + [1,2,3,] + [4]`,
+		Type: decls.NewListType(decls.Int),
+		R: `
+	_+_(
+		_+_(
+			[]~list(int),
+			[1~int, 2~int, 3~int]~list(int))~list(int)^add_list,
+			[4~int]~list(int))
+	~list(int)^add_list
+	`,
+	},
+	{
+		I: `[1, 2u] + []`,
+		R: `_+_(
+			[
+				1~int,
+				2u~uint
+			]~list(dyn),
+			[]~list(dyn)
+		)~list(dyn)^add_list`,
+		Type: decls.NewListType(decls.Dyn),
+	},
+	{
+		I:    `{1:2u, 2:3u}`,
+		Type: decls.NewMapType(decls.Int, decls.Uint),
+		R:    `{1~int : 2u~uint, 2~int : 3u~uint}~map(int, uint)`,
+	},
+	{
+		I:    `{"a":1, "b":2}.a`,
+		Type: decls.Int,
+		R:    `{"a"~string : 1~int, "b"~string : 2~int}~map(string, int).a~int`,
+	},
+	{
+		I:    `{1:2u, 2u:3}`,
+		Type: decls.NewMapType(decls.Dyn, decls.Dyn),
+		R:    `{1~int : 2u~uint, 2u~uint : 3~int}~map(dyn, dyn)`,
+	},
+	{
+		I:         `TestAllTypes{single_int32: 1, single_int64: 2}`,
+		Container: "google.expr.proto3.test",
+		R: `
+	TestAllTypes{single_int32 : 1~int, single_int64 : 2~int}
+	  ~google.expr.proto3.test.TestAllTypes
+	    ^google.expr.proto3.test.TestAllTypes`,
+		Type: decls.NewObjectType("google.expr.proto3.test.TestAllTypes"),
+	},
+	{
+		I:         `TestAllTypes{single_int32: 1u}`,
+		Container: "google.expr.proto3.test",
+		Error: `
+	ERROR: <input>:1:26: expected type of field 'single_int32' is 'int' but provided type is 'uint'
+	  | TestAllTypes{single_int32: 1u}
+	  | .........................^`,
+	},
+	{
+		I:         `TestAllTypes{single_int32: 1, undefined: 2}`,
+		Container: "google.expr.proto3.test",
+		Error: `
+	ERROR: <input>:1:40: undefined field 'undefined'
+	  | TestAllTypes{single_int32: 1, undefined: 2}
+	  | .......................................^`,
+	},
+
+	// Type compatibility operations between CEL, JSON, and Proto.
 	{
 		I: `x.single_int32 != null`,
 		Env: env{
@@ -342,7 +332,6 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 	  | .^
 	`,
 	},
-
 	{
 		I: `x.single_value + 1 / x.single_struct.y == 23`,
 		Env: env{
@@ -362,7 +351,6 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 		  )~bool^equals`,
 		Type: decls.Bool,
 	},
-
 	{
 		I: `x.single_value[23] + x.single_struct['y']`,
 		Env: env{
@@ -383,7 +371,6 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 		  `,
 		Type: decls.Dyn,
 	},
-
 	{
 		I:         `TestAllTypes.NestedEnum.BAR != 99`,
 		Container: "google.expr.proto3.test",
@@ -393,7 +380,6 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 	~bool^not_equals`,
 		Type: decls.Bool,
 	},
-
 	{
 		I:    `size([] + [1])`,
 		R:    `size(_+_([]~list(int), [1~int]~list(int))~list(int)^add_list)~int^size_list`,
@@ -404,7 +390,6 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 			},
 		},
 	},
-
 	{
 		I: `x["claims"]["groups"][0].name == "dummy"
 		&& x.claims["exp"] == y[1].time
@@ -458,10 +443,8 @@ _!=_(_-_(_+_(1~double, _*_(2~double, 3~double)~double^multiply_double)
 		},
 		Type: decls.Bool,
 	},
-
 	{
 		I: `x + y`,
-		R: ``,
 		Env: env{
 			idents: []*exprpb.Decl{
 				decls.NewIdent("x", decls.NewListType(decls.NewObjectType("google.expr.proto3.test.TestAllTypes")), nil),
@@ -474,7 +457,6 @@ ERROR: <input>:1:3: found no matching overload for '_+_' applied to '(list(googl
   | ..^
 		`,
 	},
-
 	{
 		I: `x[1u]`,
 		Env: env{
@@ -488,7 +470,6 @@ ERROR: <input>:1:2: found no matching overload for '_[_]' applied to '(list(goog
   | .^
 `,
 	},
-
 	{
 		I: `(x + x)[1].single_int32 == size(x)`,
 		Env: env{
@@ -510,7 +491,6 @@ _==_(_[_](_+_(x~list(google.expr.proto3.test.TestAllTypes)^x,
 	`,
 		Type: decls.Bool,
 	},
-
 	{
 		I: `x.repeated_int64[x.single_int32] == 23`,
 		Env: env{
@@ -544,6 +524,7 @@ _==_(size(x~google.expr.proto3.test.TestAllTypes^x.map_int64_nested_type
 		Type: decls.Bool,
 	},
 
+	// Macro tests.
 	{
 		I: `x.repeated_int64.map(x, double(x))`,
 		Env: env{
@@ -577,7 +558,6 @@ _==_(size(x~google.expr.proto3.test.TestAllTypes^x.map_int64_nested_type
 		`,
 		Type: decls.NewListType(decls.Double),
 	},
-
 	{
 		I: `x.repeated_int64.map(x, x > 0, double(x))`,
 		Env: env{
@@ -617,130 +597,6 @@ _==_(size(x~google.expr.proto3.test.TestAllTypes^x.map_int64_nested_type
     		  __result__~list(double)^__result__)~list(double)
 		`,
 		Type: decls.NewListType(decls.Double),
-	},
-
-	{
-		I: `x[2].single_int32 == 23`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x",
-					decls.NewMapType(decls.String,
-						decls.NewObjectType("google.expr.proto3.test.TestAllTypes")), nil),
-			},
-		},
-		Error: `
-ERROR: <input>:1:2: found no matching overload for '_[_]' applied to '(map(string, google.expr.proto3.test.TestAllTypes), int)'
-  | x[2].single_int32 == 23
-  | .^
-		`,
-	},
-
-	{
-		I: `x["a"].single_int32 == 23`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x",
-					decls.NewMapType(decls.String,
-						decls.NewObjectType("google.expr.proto3.test.TestAllTypes")), nil),
-			},
-		},
-		R: `
-		_==_(_[_](x~map(string, google.expr.proto3.test.TestAllTypes)^x, "a"~string)
-		~google.expr.proto3.test.TestAllTypes^index_map
-		.
-		single_int32
-		~int,
-		23~int)
-		~bool^equals`,
-		Type: decls.Bool,
-	},
-
-	{
-		I: `x.single_nested_message.bb == 43 && has(x.single_nested_message)`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
-			},
-		},
-
-		// Our implementation code is expanding the macro
-		R: `_&&_(
-    		  _==_(
-    		    x~google.expr.proto3.test.TestAllTypes^x.single_nested_message~google.expr.proto3.test.TestAllTypes.NestedMessage.bb~int,
-    		    43~int
-    		  )~bool^equals,
-    		  x~google.expr.proto3.test.TestAllTypes^x.single_nested_message~test-only~~bool
-    		)~bool^logical_and`,
-		Type: decls.Bool,
-	},
-
-	{
-		I: `x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
-			},
-		},
-		Error: `
-ERROR: <input>:1:24: undefined field 'undefined'
- | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
- | .......................^
-ERROR: <input>:1:39: undefined field 'undefined'
- | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
- | ......................................^
-ERROR: <input>:1:56: field 'single_int32' does not support presence check
- | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
- | .......................................................^
-ERROR: <input>:1:79: field 'repeated_int32' does not support presence check
- | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
- | ..............................................................................^
-		`,
-	},
-
-	{
-		I: `x.single_nested_message != null`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
-			},
-		},
-		R: `
-		_!=_(x~google.expr.proto3.test.TestAllTypes^x.single_nested_message
-		~google.expr.proto3.test.TestAllTypes.NestedMessage,
-		null~null)
-		~bool^not_equals
-		`,
-		Type: decls.Bool,
-	},
-
-	{
-		I: `x.single_int64 != null`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
-			},
-		},
-		Error: `
-ERROR: <input>:1:16: found no matching overload for '_!=_' applied to '(int, null)'
- | x.single_int64 != null
- | ...............^
-		`,
-	},
-
-	{
-		I: `x.single_int64_wrapper == null`,
-		Env: env{
-			idents: []*exprpb.Decl{
-				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
-			},
-		},
-		R: `
-		_==_(x~google.expr.proto3.test.TestAllTypes^x.single_int64_wrapper
-		~wrapper(int),
-		null~null)
-		~bool^equals
-		`,
-		Type: decls.Bool,
 	},
 	{
 		I: `x.repeated_int64.exists(y, y > 10) && y < 5`,
@@ -845,7 +701,6 @@ ERROR: <input>:1:16: found no matching overload for '_!=_' applied to '(int, nul
 		  )~bool^logical_and`,
 		Type: decls.Bool,
 	},
-
 	{
 		I: `x.all(e, 0)`,
 		Env: env{
@@ -863,6 +718,82 @@ ERROR: <input>:1:6: found no matching overload for '_&&_' applied to '(bool, int
 		`,
 	},
 
+	// Indexing and membership / definition testing.
+	{
+		I: `x[2].single_int32 == 23`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x",
+					decls.NewMapType(decls.String,
+						decls.NewObjectType("google.expr.proto3.test.TestAllTypes")), nil),
+			},
+		},
+		Error: `
+ERROR: <input>:1:2: found no matching overload for '_[_]' applied to '(map(string, google.expr.proto3.test.TestAllTypes), int)'
+  | x[2].single_int32 == 23
+  | .^
+		`,
+	},
+	{
+		I: `x["a"].single_int32 == 23`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x",
+					decls.NewMapType(decls.String,
+						decls.NewObjectType("google.expr.proto3.test.TestAllTypes")), nil),
+			},
+		},
+		R: `
+		_==_(_[_](x~map(string, google.expr.proto3.test.TestAllTypes)^x, "a"~string)
+		~google.expr.proto3.test.TestAllTypes^index_map
+		.
+		single_int32
+		~int,
+		23~int)
+		~bool^equals`,
+		Type: decls.Bool,
+	},
+	{
+		I: `x.single_nested_message.bb == 43 && has(x.single_nested_message)`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		// Macro expansion applied at parse time.
+		R: `_&&_(
+    		  _==_(
+    		    x~google.expr.proto3.test.TestAllTypes^x.single_nested_message~google.expr.proto3.test.TestAllTypes.NestedMessage.bb~int,
+    		    43~int
+    		  )~bool^equals,
+    		  x~google.expr.proto3.test.TestAllTypes^x.single_nested_message~test-only~~bool
+    		)~bool^logical_and`,
+		Type: decls.Bool,
+	},
+
+	{
+		I: `x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		Error: `
+ERROR: <input>:1:24: undefined field 'undefined'
+ | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
+ | .......................^
+ERROR: <input>:1:39: undefined field 'undefined'
+ | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
+ | ......................................^
+ERROR: <input>:1:56: field 'single_int32' does not support presence check
+ | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
+ | .......................................................^
+ERROR: <input>:1:79: field 'repeated_int32' does not support presence check
+ | x.single_nested_message.undefined == x.undefined && has(x.single_int32) && has(x.repeated_int32)
+ | ..............................................................................^
+		`,
+	},
+
 	{
 		I: `.google.expr.proto3.test.TestAllTypes`,
 		R: `	.google.expr.proto3.test.TestAllTypes
@@ -870,6 +801,214 @@ ERROR: <input>:1:6: found no matching overload for '_&&_' applied to '(bool, int
 	^google.expr.proto3.test.TestAllTypes`,
 		Type: decls.NewTypeType(
 			decls.NewObjectType("google.expr.proto3.test.TestAllTypes")),
+	},
+
+	// Nullability support and wrapper types.
+	{
+		I: `x.single_nested_message != null`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		R: `
+		_!=_(x~google.expr.proto3.test.TestAllTypes^x.single_nested_message
+		~google.expr.proto3.test.TestAllTypes.NestedMessage,
+		null~null)
+		~bool^not_equals
+		`,
+		Type: decls.Bool,
+	},
+	{
+		I: `x.single_int64 != null`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		Error: `
+ERROR: <input>:1:16: found no matching overload for '_!=_' applied to '(int, null)'
+ | x.single_int64 != null
+ | ...............^
+		`,
+	},
+	{
+		I: `x.single_int64_wrapper == null`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		R: `
+		_==_(x~google.expr.proto3.test.TestAllTypes^x.single_int64_wrapper
+		~wrapper(int),
+		null~null)
+		~bool^equals
+		`,
+		Type: decls.Bool,
+	},
+	{
+		I: `x.single_bool_wrapper
+		&& x.single_bytes_wrapper == b'hi'
+		&& x.single_double_wrapper != 2.0
+		&& x.single_float_wrapper == 1.0
+		&& x.single_int32_wrapper != 2
+		&& x.single_int64_wrapper == 1
+		&& x.single_string_wrapper == 'hi'
+		&& x.single_uint32_wrapper == 1u
+		&& x.single_uint64_wrapper != 42u`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		R: `_&&_(
+			_&&_(
+				_&&_(
+					_&&_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_bool_wrapper~wrapper(bool),
+						_==_(
+							x~google.expr.proto3.test.TestAllTypes^x.single_bytes_wrapper~wrapper(bytes),
+							b"hi"~bytes
+						)~bool^equals
+					)~bool^logical_and,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_double_wrapper~wrapper(double),
+						2~double
+					)~bool^not_equals
+				)~bool^logical_and,
+				_&&_(
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_float_wrapper~wrapper(double),
+						1~double
+					)~bool^equals,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_int32_wrapper~wrapper(int),
+						2~int
+					)~bool^not_equals
+				)~bool^logical_and
+			)~bool^logical_and,
+			_&&_(
+				_&&_(
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_int64_wrapper~wrapper(int),
+						1~int
+					)~bool^equals,
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_string_wrapper~wrapper(string),
+						"hi"~string
+					)~bool^equals
+				)~bool^logical_and,
+				_&&_(
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_uint32_wrapper~wrapper(uint),
+						1u~uint
+					)~bool^equals,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_uint64_wrapper~wrapper(uint),
+						42u~uint
+					)~bool^not_equals
+				)~bool^logical_and
+			)~bool^logical_and
+		)~bool^logical_and`,
+		Type: decls.Bool,
+	},
+	{
+		I: `x.single_bool_wrapper == google.protobuf.BoolValue{value: true}
+			&& x.single_bytes_wrapper == google.protobuf.BytesValue{value: b'hi'}
+			&& x.single_double_wrapper != google.protobuf.DoubleValue{value: 2.0}
+			&& x.single_float_wrapper == google.protobuf.FloatValue{value: 1.0}
+			&& x.single_int32_wrapper != google.protobuf.Int32Value{value: -2}
+			&& x.single_int64_wrapper == google.protobuf.Int64Value{value: 1}
+			&& x.single_string_wrapper == google.protobuf.StringValue{value: 'hi'}
+			&& x.single_string_wrapper == google.protobuf.Value{string_value: 'hi'}
+			&& x.single_uint32_wrapper == google.protobuf.UInt32Value{value: 1u}
+			&& x.single_uint64_wrapper != google.protobuf.UInt64Value{value: 42u}`,
+		Env: env{
+			idents: []*exprpb.Decl{
+				decls.NewIdent("x", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+		},
+		R: `
+		_&&_(
+			_&&_(
+				_&&_(
+					_&&_(
+						_==_(
+							x~google.expr.proto3.test.TestAllTypes^x.single_bool_wrapper~wrapper(bool),
+							google.protobuf.BoolValue{
+								value:true~bool
+							}~wrapper(bool)^google.protobuf.BoolValue
+						)~bool^equals,
+						_==_(
+							x~google.expr.proto3.test.TestAllTypes^x.single_bytes_wrapper~wrapper(bytes),
+							google.protobuf.BytesValue{
+								value:b"hi"~bytes
+							}~wrapper(bytes)^google.protobuf.BytesValue
+						)~bool^equals
+					)~bool^logical_and,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_double_wrapper~wrapper(double),
+						google.protobuf.DoubleValue{
+							value:2~double
+						}~wrapper(double)^google.protobuf.DoubleValue
+					)~bool^not_equals
+				)~bool^logical_and,
+				_&&_(
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_float_wrapper~wrapper(double),
+						google.protobuf.FloatValue{
+							value:1~double
+						}~wrapper(double)^google.protobuf.FloatValue
+					)~bool^equals,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_int32_wrapper~wrapper(int),
+						google.protobuf.Int32Value{
+							value:-2~int
+						}~wrapper(int)^google.protobuf.Int32Value
+					)~bool^not_equals
+				)~bool^logical_and
+			)~bool^logical_and,
+			_&&_(
+				_&&_(
+					_&&_(
+						_==_(
+							x~google.expr.proto3.test.TestAllTypes^x.single_int64_wrapper~wrapper(int),
+							google.protobuf.Int64Value{
+								value:1~int
+							}~wrapper(int)^google.protobuf.Int64Value
+						)~bool^equals,
+						_==_(
+							x~google.expr.proto3.test.TestAllTypes^x.single_string_wrapper~wrapper(string),
+							google.protobuf.StringValue{
+								value:"hi"~string
+							}~wrapper(string)^google.protobuf.StringValue
+						)~bool^equals
+					)~bool^logical_and,
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_string_wrapper~wrapper(string),
+						google.protobuf.Value{
+							string_value:"hi"~string
+						}~dyn^google.protobuf.Value
+					)~bool^equals
+				)~bool^logical_and,
+				_&&_(
+					_==_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_uint32_wrapper~wrapper(uint),
+						google.protobuf.UInt32Value{
+							value:1u~uint
+						}~wrapper(uint)^google.protobuf.UInt32Value
+					)~bool^equals,
+					_!=_(
+						x~google.expr.proto3.test.TestAllTypes^x.single_uint64_wrapper~wrapper(uint),
+						google.protobuf.UInt64Value{
+							value:42u~uint
+						}~wrapper(uint)^google.protobuf.UInt64Value
+					)~bool^not_equals
+				)~bool^logical_and
+			)~bool^logical_and
+		)~bool^logical_and`,
+		Type: decls.Bool,
 	},
 
 	{
@@ -913,7 +1052,7 @@ ERROR: <input>:1:5: undeclared reference to 'x' (in container '')
 						x~any^x,
 						google.protobuf.Any{
 							type_url:"types.googleapis.com/google.expr.proto3.test.TestAllTypes"~string
-						}~google.protobuf.Any^google.protobuf.Any
+						}~any^google.protobuf.Any
 					)~bool^equals,
 					_==_(
 						x~any^x.single_nested_message~dyn.bb~dyn,

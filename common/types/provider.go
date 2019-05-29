@@ -28,6 +28,8 @@ import (
 	dpb "github.com/golang/protobuf/ptypes/duration"
 	structpb "github.com/golang/protobuf/ptypes/struct"
 	tpb "github.com/golang/protobuf/ptypes/timestamp"
+	wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
+
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -155,7 +157,7 @@ func (p *protoTypeRegistry) NewValue(typeName string, fields map[string]ref.Val)
 		}
 		refField.Set(reflect.ValueOf(fieldValue))
 	}
-	return NewObject(p, td, value.Interface().(proto.Message))
+	return p.NativeToValue(value.Interface())
 }
 
 func (p *protoTypeRegistry) RegisterDescriptor(fileDesc *descpb.FileDescriptorProto) error {
@@ -216,7 +218,16 @@ func (p *protoTypeRegistry) NativeToValue(value interface{}) ref.Val {
 		*structpb.ListValue,
 		structpb.NullValue,
 		*structpb.Struct,
-		*structpb.Value:
+		*structpb.Value,
+		*wrapperspb.BoolValue,
+		*wrapperspb.BytesValue,
+		*wrapperspb.DoubleValue,
+		*wrapperspb.FloatValue,
+		*wrapperspb.Int32Value,
+		*wrapperspb.Int64Value,
+		*wrapperspb.StringValue,
+		*wrapperspb.UInt32Value,
+		*wrapperspb.UInt64Value:
 		return DefaultTypeAdapter.NativeToValue(value)
 	// Override the Any type by ensuring that custom proto-types are considered on recursive calls.
 	case *anypb.Any:
@@ -413,6 +424,60 @@ func (a *defaultTypeAdapter) NativeToValue(value interface{}) ref.Val {
 			return NewErr("unknown type: %s", val.GetTypeUrl())
 		}
 		return a.NativeToValue(unpackedAny.Message)
+	case *wrapperspb.BoolValue:
+		val := value.(*wrapperspb.BoolValue)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Bool(val.GetValue())
+	case *wrapperspb.BytesValue:
+		val := value.(*wrapperspb.BytesValue)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Bytes(val.GetValue())
+	case *wrapperspb.DoubleValue:
+		val := value.(*wrapperspb.DoubleValue)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Double(val.GetValue())
+	case *wrapperspb.FloatValue:
+		val := value.(*wrapperspb.FloatValue)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Double(val.GetValue())
+	case *wrapperspb.Int32Value:
+		val := value.(*wrapperspb.Int32Value)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Int(val.GetValue())
+	case *wrapperspb.Int64Value:
+		val := value.(*wrapperspb.Int64Value)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Int(val.GetValue())
+	case *wrapperspb.StringValue:
+		val := value.(*wrapperspb.StringValue)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return String(val.GetValue())
+	case *wrapperspb.UInt32Value:
+		val := value.(*wrapperspb.UInt32Value)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Uint(val.GetValue())
+	case *wrapperspb.UInt64Value:
+		val := value.(*wrapperspb.UInt64Value)
+		if val == nil {
+			return NewErr("unsupported type conversion")
+		}
+		return Uint(val.GetValue())
 	default:
 		refValue := reflect.ValueOf(value)
 		if refValue.Kind() == reflect.Ptr {

@@ -36,6 +36,7 @@ import (
 
 	structpb "github.com/golang/protobuf/ptypes/struct"
 	tpb "github.com/golang/protobuf/ptypes/timestamp"
+	wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -557,13 +558,17 @@ var (
 				},
 			},
 		},
+		// pb2 primitive fields may have default values set.
 		{
 			name: "select_pb2_primitive_fields",
-			expr: `a.single_int32 == a.single_int64 &&
-				a.single_uint32 == a.single_uint64 &&
-				a.single_float == a.single_double &&
-				!a.single_bool &&
-				"" == a.single_string`,
+			expr: `a.single_int32 == -32
+				&& a.single_int64 == -64
+				&& a.single_uint32 == 32u
+				&& a.single_uint64 == 64u
+				&& a.single_float == 3.0
+				&& a.single_double == 6.4
+				&& a.single_bool
+				&& "empty" == a.single_string`,
 			pkg:   "google.expr.proto2.test",
 			types: []proto.Message{&proto2pb.TestAllTypes{}},
 			env: []*exprpb.Decl{
@@ -571,6 +576,24 @@ var (
 			},
 			in: map[string]interface{}{
 				"a": &proto2pb.TestAllTypes{},
+			},
+		},
+		// Wrapper type nil or value test.
+		{
+			name: "select_pb3_wrapper_fields",
+			expr: `!has(a.single_int32_wrapper) && a.single_int32_wrapper == null
+				&& has(a.single_int64_wrapper) && a.single_int64_wrapper == 0
+				&& has(a.single_string_wrapper) && a.single_string_wrapper == "hello"
+				&& a.single_int64_wrapper == google.protobuf.Int32Value{value: 0}`,
+			types: []proto.Message{&proto3pb.TestAllTypes{}},
+			env: []*exprpb.Decl{
+				decls.NewIdent("a", decls.NewObjectType("google.expr.proto3.test.TestAllTypes"), nil),
+			},
+			in: map[string]interface{}{
+				"a": &proto3pb.TestAllTypes{
+					SingleInt64Wrapper:  &wrapperspb.Int64Value{},
+					SingleStringWrapper: &wrapperspb.StringValue{Value: "hello"},
+				},
 			},
 		},
 		{

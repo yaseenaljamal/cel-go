@@ -394,7 +394,11 @@ func (c *checker) checkCreateMessage(e *exprpb.Expr) {
 			}
 		}
 	}
-	c.setType(e, messageType)
+	if isObjectWellKnownType(messageType) {
+		c.setType(e, getObjectWellKnownType(messageType))
+	} else {
+		c.setType(e, messageType)
+	}
 
 	// Check the field initializers.
 	for _, ent := range msgVal.GetEntries() {

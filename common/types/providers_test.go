@@ -21,23 +21,25 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	structpb "github.com/golang/protobuf/ptypes/struct"
 
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
 
+	structpb "github.com/golang/protobuf/ptypes/struct"
+	wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
 func TestTypeRegistry_NewValue(t *testing.T) {
 	reg := NewRegistry(&exprpb.ParsedExpr{})
-	if sourceInfo := reg.NewValue(
+	sourceInfo := reg.NewValue(
 		"google.api.expr.v1alpha1.SourceInfo",
 		map[string]ref.Val{
 			"location":     String("TestTypeRegistry_NewValue"),
 			"line_offsets": NewDynamicList(reg, []int64{0, 2}),
 			"positions":    NewDynamicMap(reg, map[int64]int64{1: 2, 2: 4}),
-		}); IsError(sourceInfo) {
+		})
+	if IsError(sourceInfo) {
 		t.Error(sourceInfo)
 	} else {
 		info := sourceInfo.Value().(*exprpb.SourceInfo)
@@ -108,6 +110,7 @@ func TestTypeRegistry_Getters(t *testing.T) {
 
 func TestValue_ConvertToNative(t *testing.T) {
 	reg := NewRegistry(&exprpb.ParsedExpr{})
+
 	// Core type conversion tests.
 	expectValueToNative(t, True, true)
 	expectValueToNative(t, Int(-1), int32(-1))
@@ -230,6 +233,28 @@ func TestNativeToValue_Json(t *testing.T) {
 	// Proto conversion test.
 	parsedExpr := &exprpb.ParsedExpr{}
 	expectNativeToValue(t, parsedExpr, reg.NativeToValue(parsedExpr))
+}
+
+func TestNativeToValue_Wrappers(t *testing.T) {
+	// Wrapper conversion test.
+	expectNativeToValue(t, &wrapperspb.BoolValue{Value: true}, True)
+	expectNativeToValue(t, &wrapperspb.BoolValue{}, False)
+	expectNativeToValue(t, &wrapperspb.BytesValue{}, Bytes{})
+	expectNativeToValue(t, &wrapperspb.BytesValue{Value: []byte("hi")}, Bytes("hi"))
+	expectNativeToValue(t, &wrapperspb.DoubleValue{}, Double(0.0))
+	expectNativeToValue(t, &wrapperspb.DoubleValue{Value: 6.4}, Double(6.4))
+	expectNativeToValue(t, &wrapperspb.FloatValue{}, Double(0.0))
+	expectNativeToValue(t, &wrapperspb.FloatValue{Value: 3.0}, Double(3.0))
+	expectNativeToValue(t, &wrapperspb.Int32Value{}, IntZero)
+	expectNativeToValue(t, &wrapperspb.Int32Value{Value: -32}, Int(-32))
+	expectNativeToValue(t, &wrapperspb.Int64Value{}, IntZero)
+	expectNativeToValue(t, &wrapperspb.Int64Value{Value: -64}, Int(-64))
+	expectNativeToValue(t, &wrapperspb.StringValue{}, String(""))
+	expectNativeToValue(t, &wrapperspb.StringValue{Value: "hello"}, String("hello"))
+	expectNativeToValue(t, &wrapperspb.UInt32Value{}, Uint(0))
+	expectNativeToValue(t, &wrapperspb.UInt32Value{Value: 32}, Uint(32))
+	expectNativeToValue(t, &wrapperspb.UInt64Value{}, Uint(0))
+	expectNativeToValue(t, &wrapperspb.UInt64Value{Value: 64}, Uint(64))
 }
 
 func TestNativeToValue_Primitive(t *testing.T) {

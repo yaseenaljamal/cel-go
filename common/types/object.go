@@ -90,20 +90,22 @@ func (o *protoObj) IsSet(field ref.Val) ref.Val {
 		return ValOrErr(field, "no such overload")
 	}
 	protoFieldStr := string(protoFieldName)
-	if f, found := o.typeDesc.FieldByName(protoFieldStr); found {
-		if !f.IsOneof() {
-			return isFieldSet(o.refValue.Elem().Field(f.Index()))
-		}
-
-		getter := o.refValue.MethodByName(f.GetterName())
-		if getter.IsValid() {
-			refField := getter.Call([]reflect.Value{})[0]
-			if refField.IsValid() {
-				return isFieldSet(refField)
-			}
-		}
+	f, found := o.typeDesc.FieldByName(protoFieldStr)
+	if !found {
+		return NewErr("no such field '%s'", field)
 	}
-	return NewErr("no such field '%s'", field)
+	if !f.SupportsPresence() {
+		return NewErr("field does not support presence testing.")
+	}
+	getter := o.refValue.MethodByName(f.GetterName())
+	if !getter.IsValid() {
+		return NewErr("no such field '%s'", field)
+	}
+	refField := getter.Call([]reflect.Value{})[0]
+	if !refField.IsValid() {
+		return NewErr("no such field '%s'", field)
+	}
+	return isFieldSet(refField)
 }
 
 func (o *protoObj) Get(index ref.Val) ref.Val {
@@ -112,20 +114,19 @@ func (o *protoObj) Get(index ref.Val) ref.Val {
 		return ValOrErr(index, "no such overload")
 	}
 	protoFieldStr := string(protoFieldName)
-	if f, found := o.typeDesc.FieldByName(protoFieldStr); found {
-		if !f.IsOneof() {
-			return getOrDefaultInstance(o.TypeAdapter, o.refValue.Elem().Field(f.Index()))
-		}
-
-		getter := o.refValue.MethodByName(f.GetterName())
-		if getter.IsValid() {
-			refField := getter.Call([]reflect.Value{})[0]
-			if refField.IsValid() {
-				return getOrDefaultInstance(o.TypeAdapter, refField)
-			}
-		}
+	fd, found := o.typeDesc.FieldByName(protoFieldStr)
+	if !found {
+		return NewErr("no such field '%s'", index)
 	}
-	return NewErr("no such field '%s'", index)
+	getter := o.refValue.MethodByName(fd.GetterName())
+	if !getter.IsValid() {
+		return NewErr("no such field '%s'", index)
+	}
+	refField := getter.Call([]reflect.Value{})[0]
+	if !refField.IsValid() {
+		return NewErr("no such field '%s'", index)
+	}
+	return getOrDefaultInstance(o.TypeAdapter, fd, refField)
 }
 
 func (o *protoObj) Type() ref.Type {
@@ -136,10 +137,6 @@ func (o *protoObj) Value() interface{} {
 	return o.value
 }
 
-var (
-	protoDefaultInstanceMap = make(map[reflect.Type]ref.Val)
-)
-
 func isFieldSet(refVal reflect.Value) ref.Val {
 	if refVal.Kind() == reflect.Ptr && refVal.IsNil() {
 		return False
@@ -147,22 +144,18 @@ func isFieldSet(refVal reflect.Value) ref.Val {
 	return True
 }
 
-func getOrDefaultInstance(adapter ref.TypeAdapter, refVal reflect.Value) ref.Val {
+func getOrDefaultInstance(adapter ref.TypeAdapter,
+	fd *pb.FieldDescription,
+	refVal reflect.Value) ref.Val {
 	if isFieldSet(refVal) == True {
 		value := refVal.Interface()
 		return adapter.NativeToValue(value)
 	}
-	return getDefaultInstance(adapter, refVal.Type())
-}
-
-func getDefaultInstance(adapter ref.TypeAdapter, refType reflect.Type) ref.Val {
-	if refType.Kind() == reflect.Ptr {
-		refType = refType.Elem()
+	if fd.IsWrapper() {
+		return NullValue
 	}
-	if defaultValue, found := protoDefaultInstanceMap[refType]; found {
-		return defaultValue
+	if fd.IsMessage() {
+		return adapter.NativeToValue(fd.Type().DefaultValue())
 	}
-	defaultValue := adapter.NativeToValue(reflect.New(refType).Interface())
-	protoDefaultInstanceMap[refType] = defaultValue
-	return defaultValue
+	return NewErr("no default value for field: %s", fd.Name())
 }
