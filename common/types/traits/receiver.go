@@ -18,7 +18,13 @@ import "github.com/google/cel-go/common/types/ref"
 
 // Receiver interface for routing instance method calls within a value.
 type Receiver interface {
-	// Receive accepts a function name, overload id, and arguments and returns
-	// a value.
-	Receive(function string, overload string, args []ref.Val) ref.Val
+	// ReceiveUnary applies a function on the current value.
+	ReceiveUnary(function, overload string) ref.Val
+
+	// ReceiveBinary applies a function and takes the current object as the left-hand side arg in
+	// a binary operation against the rhs value.
+	ReceiveBinary(function, overload string, rhs ref.Val) ref.Val
+
+	// Receive accepts a function name, overload id, and arguments and returns a value.
+	Receive(function, overload string, args []ref.Val) ref.Val
 }

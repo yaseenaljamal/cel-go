@@ -115,23 +115,34 @@ func (t Timestamp) Equal(other ref.Val) ref.Val {
 	return Bool(proto.Equal(t.Timestamp, other.Value().(proto.Message)))
 }
 
-// Receive implements traits.Reciever.Receive.
-func (t Timestamp) Receive(function string, overload string, args []ref.Val) ref.Val {
+// ReceiveUnary implements the traits.Receiver interface method.
+func (t Timestamp) ReceiveUnary(function, overload string) ref.Val {
 	ts := t.Timestamp
 	tstamp, err := ptypes.Timestamp(ts)
 	if err != nil {
 		return &Err{err}
 	}
-	switch len(args) {
-	case 0:
-		if f, found := timestampZeroArgOverloads[function]; found {
-			return f(tstamp)
-		}
-	case 1:
-		if f, found := timestampOneArgOverloads[function]; found {
-			return f(tstamp, args[0])
-		}
+	if f, found := timestampZeroArgOverloads[function]; found {
+		return f(tstamp)
 	}
+	return NewErr("no such overload")
+}
+
+// ReceiveBinary implements traits.Receiver interface method.
+func (t Timestamp) ReceiveBinary(function, overload string, rhs ref.Val) ref.Val {
+	ts := t.Timestamp
+	tstamp, err := ptypes.Timestamp(ts)
+	if err != nil {
+		return &Err{err}
+	}
+	if f, found := timestampOneArgOverloads[function]; found {
+		return f(tstamp, rhs)
+	}
+	return NewErr("no such overload")
+}
+
+// Receive implements traits.Receiver interface method.
+func (t Timestamp) Receive(function, overload string, args []ref.Val) ref.Val {
 	return NewErr("no such overload")
 }
 

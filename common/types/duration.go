@@ -150,17 +150,25 @@ func (d Duration) Negate() ref.Val {
 	return Duration{ptypes.DurationProto(-dur)}
 }
 
-// Receive implements traits.Receiver.Receive.
-func (d Duration) Receive(function string, overload string, args []ref.Val) ref.Val {
+// ReceiveUnary implements traits.Receiver interface method.
+func (d Duration) ReceiveUnary(function, overload string) ref.Val {
 	dur, err := ptypes.Duration(d.Duration)
 	if err != nil {
 		return &Err{err}
 	}
-	if len(args) == 0 {
-		if f, found := durationZeroArgOverloads[function]; found {
-			return f(dur)
-		}
+	if f, found := durationZeroArgOverloads[function]; found {
+		return f(dur)
 	}
+	return NewErr("no such overload")
+}
+
+// ReceiveBinary implements traits.Receiver interface method.
+func (d Duration) ReceiveBinary(function, overload string, rhs ref.Val) ref.Val {
+	return NewErr("no such overload")
+}
+
+// Receive implements traits.Receiver interface method.
+func (d Duration) Receive(function, overload string, args []ref.Val) ref.Val {
 	return NewErr("no such overload")
 }
 

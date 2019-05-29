@@ -272,7 +272,7 @@ func (un *evalUnary) Eval(vars Activation) ref.Val {
 	// Otherwise, if the argument is a ReceiverType attempt to invoke the receiver method on the
 	// operand (arg0).
 	if argVal.Type().HasTrait(traits.ReceiverType) {
-		return argVal.(traits.Receiver).Receive(un.function, un.overload, []ref.Val{})
+		return argVal.(traits.Receiver).ReceiveUnary(un.function, un.overload)
 	}
 	return types.NewErr("no such overload: %s", un.function)
 }
@@ -311,7 +311,7 @@ func (bin *evalBinary) Eval(vars Activation) ref.Val {
 	// Otherwise, if the argument is a ReceiverType attempt to invoke the receiver method on the
 	// operand (arg0).
 	if lVal.Type().HasTrait(traits.ReceiverType) {
-		return lVal.(traits.Receiver).Receive(bin.function, bin.overload, []ref.Val{rVal})
+		return lVal.(traits.Receiver).ReceiveBinary(bin.function, bin.overload, rVal)
 	}
 	return types.NewErr("no such overload: %s", bin.function)
 }
