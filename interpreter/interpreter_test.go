@@ -627,8 +627,8 @@ var (
 			},
 		},
 		{
-			name:  "select_pb3_enum_field",
-			expr:  `a.repeated_nested_enum[0]`,
+			name:  "select_pb3_single_compare",
+			expr:  `a.single_uint64 > 3u`,
 			pkg:   "google.expr.proto3.test",
 			types: []proto.Message{&proto3pb.TestAllTypes{}},
 			env: []*exprpb.Decl{
@@ -636,12 +636,10 @@ var (
 			},
 			in: map[string]interface{}{
 				"a": &proto3pb.TestAllTypes{
-					RepeatedNestedEnum: []proto3pb.TestAllTypes_NestedEnum{
-						proto3pb.TestAllTypes_BAR,
-					},
+					SingleUint64: 10,
 				},
 			},
-			out: int64(1),
+			out: types.True,
 		},
 		{
 			name: "select_relative",
