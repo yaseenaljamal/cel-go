@@ -678,13 +678,8 @@ var (
 			},
 		},
 		{
-<<<<<<< HEAD
-			name:  "select_pb3_compare",
-			expr:  `a.single_uint64 > 3u`,
-=======
 			name:  "select_pb3_single_compare",
 			expr:  `a.single_int64 > 3`,
->>>>>>> function-tables
 			pkg:   "google.expr.proto3.test",
 			types: []proto.Message{&proto3pb.TestAllTypes{}},
 			env: []*exprpb.Decl{

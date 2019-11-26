@@ -321,7 +321,10 @@ func (a *defaultTypeAdapter) NativeToValue(value interface{}) ref.Val {
 	case ref.Val:
 		return value.(ref.Val)
 	case bool:
-		return Bool(value.(bool))
+		if value.(bool) {
+			return True
+		}
+		return False
 	case int:
 		return Int(value.(int))
 	case int32:

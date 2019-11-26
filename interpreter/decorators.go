@@ -15,6 +15,7 @@
 package interpreter
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,9 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+
+	structpb "github.com/golang/protobuf/ptypes/struct"
+	wrapperpb "github.com/golang/protobuf/ptypes/wrappers"
 )
 
 // InterpretableDecorator is a functional interface for decorating or replacing
@@ -109,9 +113,23 @@ func decOptimize() InterpretableDecorator {
 			return maybeBuildListLiteral(i, expr)
 		case *evalMap:
 			return maybeBuildMapLiteral(i, expr)
+		case *evalEq:
+			maybeNtvCall, found := nativeOverloads[overloads.Equals]
+			if found {
+				return maybeNtvCall(i)
+			}
+		case *evalNe:
+			maybeNtvCall, found := nativeOverloads[overloads.NotEquals]
+			if found {
+				return maybeNtvCall(i)
+			}
 		case *evalBinary:
 			if expr.overload == overloads.InList {
 				return maybeOptimizeSetMembership(i, expr)
+			}
+			maybeNtvCall, found := nativeOverloads[expr.overload]
+			if found {
+				return maybeNtvCall(i)
 			}
 		}
 		return i, nil
@@ -194,6 +212,8 @@ func maybeOptimizeSetMembership(i Interpretable, inlist *evalBinary) (Interpreta
 
 type maybeNativeOverload func(Interpretable) (Interpretable, error)
 
+type nativeBinaryFunc func(lhs, rhs interface{}) (interface{}, error)
+
 func isAttrOnlyBinary(call Interpretable) bool {
 	bin, ok := call.(*evalBinary)
 	if !ok {
@@ -205,64 +225,100 @@ func isAttrOnlyBinary(call Interpretable) bool {
 }
 
 func isAttrAndConstBinary(call Interpretable) bool {
-	bin, ok := call.(*evalBinary)
-	if !ok {
+	var lhs, rhs Interpretable
+	switch c := call.(type) {
+	case *evalBinary:
+		lhs = c.lhs
+		rhs = c.rhs
+	case *evalEq:
+		lhs = c.lhs
+		rhs = c.rhs
+	case *evalNe:
+		lhs = c.lhs
+		rhs = c.rhs
+	default:
 		return false
 	}
-	_, lhsIsAttr := bin.lhs.(instAttr)
-	_, lhsIsConst := bin.rhs.(instAttr)
-	_, rhsIsAttr := bin.rhs.(instAttr)
-	_, rhsIsConst := bin.rhs.(instAttr)
+	_, lhsIsAttr := lhs.(instAttr)
+	lConst, lhsIsConst := lhs.(instConst)
+	_, rhsIsAttr := rhs.(instAttr)
+	rConst, rhsIsConst := rhs.(instConst)
+	if rhsIsConst {
+		switch rConst.Value().Type() {
+		case types.BoolType,
+			types.BytesType,
+			types.DoubleType,
+			types.IntType,
+			types.NullType,
+			types.StringType,
+			types.UintType:
+			rhsIsConst = true
+		default:
+			rhsIsConst = false
+		}
+	}
+	if lhsIsConst {
+		switch lConst.Value().Type() {
+		case types.BoolType,
+			types.BytesType,
+			types.DoubleType,
+			types.IntType,
+			types.NullType,
+			types.StringType,
+			types.UintType:
+			lhsIsConst = true
+		default:
+			lhsIsConst = false
+		}
+	}
 	return lhsIsAttr && rhsIsConst || lhsIsConst && rhsIsAttr
 }
 
 var nativeOverloads = map[string]maybeNativeOverload{
 	overloads.Equals: func(call Interpretable) (Interpretable, error) {
 		if isAttrAndConstBinary(call) {
-
+			return maybeEvalBinaryAttrConstNative(call, eq), nil
 		}
 		return call, nil
 	},
 	overloads.NotEquals: func(call Interpretable) (Interpretable, error) {
 		if isAttrAndConstBinary(call) {
-
+			return maybeEvalBinaryAttrConstNative(call, ne), nil
 		}
 		return call, nil
 	},
 	overloads.EndsWithString: func(call Interpretable) (Interpretable, error) {
 		if isAttrOnlyBinary(call) {
-
+			return maybeEvalBinaryAttrNative(call, strEndsWith), nil
 		}
 		if isAttrAndConstBinary(call) {
-
+			return maybeEvalBinaryAttrConstNative(call, strEndsWith), nil
 		}
 		return call, nil
 	},
 	overloads.StartsWithString: func(call Interpretable) (Interpretable, error) {
 		if isAttrOnlyBinary(call) {
-			bin := call.(*evalBinary)
-			return &evalBinaryAttrNative{
-				id:      bin.id,
-				lhs:     bin.lhs.(instAttr).Attr(),
-				rhs:     bin.rhs.(instAttr).Attr(),
-				fun:     strStartsWith,
-				adapter: bin.lhs.(instAttr).Adapter(),
-			}, nil
+			return maybeEvalBinaryAttrNative(call, strStartsWith), nil
 		}
 		if isAttrAndConstBinary(call) {
-			var arg instAttr
-			var val ref.Val
-			bin := call.(*evalBinary)
-			return &evalBinaryAttrConstNative{
-				id:      bin.id,
-				arg:     arg.Attr(),
-				val:     val,
-				fun:     strStartsWith,
-				adapter: arg.Adapter(),
-			}, nil
+			return maybeEvalBinaryAttrConstNative(call, strStartsWith), nil
 		}
 		return call, nil
 	},
+}
+
+func maybeEvalBinaryAttrNative(call Interpretable, fun nativeBinaryFunc) Interpretable {
+	bin, ok := call.(*evalBinary)
+	if !ok {
+		return call
+	}
+	return &evalBinaryAttrNative{
+		id:      bin.id,
+		lhs:     bin.lhs.(instAttr).Attr(),
+		rhs:     bin.rhs.(instAttr).Attr(),
+		fun:     fun,
+		adapter: bin.lhs.(instAttr).Adapter(),
+	}
 }
 
 type evalBinaryAttrNative struct {
@@ -301,10 +357,45 @@ func (e *evalBinaryAttrNative) Eval(ctx Activation) ref.Val {
 	return e.adapter.NativeToValue(v)
 }
 
+func maybeEvalBinaryAttrConstNative(call Interpretable,
+	fun nativeBinaryFunc) Interpretable {
+	var lhs, rhs Interpretable
+	switch bin := call.(type) {
+	case *evalEq:
+		lhs = bin.lhs
+		rhs = bin.rhs
+	case *evalNe:
+		lhs = bin.lhs
+		rhs = bin.rhs
+	case *evalBinary:
+		lhs = bin.lhs
+		rhs = bin.rhs
+	default:
+		return call
+	}
+	var arg instAttr
+	var val ref.Val
+	lAttr, lhsIsAttr := lhs.(instAttr)
+	if lhsIsAttr {
+		arg = lAttr
+		val = rhs.(instConst).Value()
+	} else {
+		arg = rhs.(instAttr)
+		val = lhs.(instConst).Value()
+	}
+	return &evalBinaryAttrConstNative{
+		id:      call.ID(),
+		arg:     arg.Attr(),
+		val:     val.Value(),
+		fun:     fun,
+		adapter: arg.Adapter(),
+	}
+}
+
 type evalBinaryAttrConstNative struct {
 	id      int64
 	arg     Attribute
-	val     ref.Val
+	val     interface{}
 	fun     func(lhs, rhs interface{}) (interface{}, error)
 	adapter ref.TypeAdapter
 }
@@ -322,11 +413,179 @@ func (e *evalBinaryAttrConstNative) Eval(ctx Activation) ref.Val {
 	if ok {
 		return unk
 	}
-	v, err := e.fun(arg, e.val.Value())
+	v, err := e.fun(arg, e.val)
 	if err != nil {
 		return types.NewErr(err.Error())
 	}
 	return e.adapter.NativeToValue(v)
+}
+
+func eq(lhs, rhs interface{}) (interface{}, error) {
+	lUnk, isUnk := lhs.(types.Unknown)
+	if isUnk {
+		return lUnk, nil
+	}
+	switch r := rhs.(type) {
+	case bool:
+		switch l := lhs.(type) {
+		case bool:
+			return l == r, nil
+		case types.Bool:
+			return bool(l) == r, nil
+		case *wrapperpb.BoolValue:
+			return l.GetValue() == r, nil
+		}
+	case []byte:
+		switch l := lhs.(type) {
+		case []byte:
+			return bytes.Equal(l, r), nil
+		case types.Bytes:
+			return bytes.Equal([]byte(l), r), nil
+		case *wrapperpb.BytesValue:
+			return bytes.Equal(l.GetValue(), r), nil
+		}
+	case float64:
+		switch l := lhs.(type) {
+		case float32:
+			return l == float32(r), nil
+		case *wrapperpb.FloatValue:
+			return l.GetValue() == float32(r), nil
+		case float64:
+			return l == r, nil
+		case *wrapperpb.DoubleValue:
+			return l.GetValue() == r, nil
+		case types.Double:
+			return float64(l) == r, nil
+		}
+	case int64:
+		switch l := lhs.(type) {
+		case int:
+			return int64(l) == r, nil
+		case int32:
+			return int64(l) == r, nil
+		case *wrapperpb.Int32Value:
+			return int64(l.GetValue()) == r, nil
+		case int64:
+			return l == r, nil
+		case *wrapperpb.Int64Value:
+			return l.GetValue() == r, nil
+		case types.Int:
+			return int64(l) == r, nil
+		}
+	case string:
+		switch l := lhs.(type) {
+		case string:
+			return l == r, nil
+		case types.String:
+			return string(l) == r, nil
+		case *wrapperpb.StringValue:
+			return l.GetValue() == r, nil
+		}
+	case structpb.NullValue:
+		return lhs == nil ||
+			lhs == structpb.NullValue_NULL_VALUE ||
+			lhs == types.NullValue, nil
+	case uint64:
+		switch l := lhs.(type) {
+		case uint:
+			return uint64(l) == r, nil
+		case uint32:
+			return uint64(l) == r, nil
+		case *wrapperpb.UInt32Value:
+			return uint64(l.GetValue()) == r, nil
+		case uint64:
+			return l == r, nil
+		case *wrapperpb.UInt64Value:
+			return l.GetValue() == r, nil
+		case types.Uint:
+			return uint64(l) == r, nil
+		}
+	}
+	return nil, fmt.Errorf("no such overload")
+}
+
+func ne(lhs, rhs interface{}) (interface{}, error) {
+	lUnk, isUnk := lhs.(types.Unknown)
+	if isUnk {
+		return lUnk, nil
+	}
+	switch r := rhs.(type) {
+	case bool:
+		switch l := lhs.(type) {
+		case bool:
+			return l != r, nil
+		case types.Bool:
+			return bool(l) != r, nil
+		case *wrapperpb.BoolValue:
+			return l.GetValue() != r, nil
+		}
+	case []byte:
+		switch l := lhs.(type) {
+		case []byte:
+			return !bytes.Equal(l, r), nil
+		case types.Bytes:
+			return !bytes.Equal([]byte(l), r), nil
+		case *wrapperpb.BytesValue:
+			return !bytes.Equal(l.GetValue(), r), nil
+		}
+	case float64:
+		switch l := lhs.(type) {
+		case float32:
+			return l != float32(r), nil
+		case *wrapperpb.FloatValue:
+			return l.GetValue() != float32(r), nil
+		case float64:
+			return l != r, nil
+		case *wrapperpb.DoubleValue:
+			return l.GetValue() != r, nil
+		case types.Double:
+			return float64(l) != r, nil
+		}
+	case int64:
+		switch l := lhs.(type) {
+		case int:
+			return int64(l) != r, nil
+		case int32:
+			return int64(l) != r, nil
+		case *wrapperpb.Int32Value:
+			return int64(l.GetValue()) != r, nil
+		case int64:
+			return l != r, nil
+		case *wrapperpb.Int64Value:
+			return l.GetValue() != r, nil
+		case types.Int:
+			return int64(l) != r, nil
+		}
+	case string:
+		switch l := lhs.(type) {
+		case string:
+			return l != r, nil
+		case types.String:
+			return string(l) != r, nil
+		case *wrapperpb.StringValue:
+			return l.GetValue() != r, nil
+		}
+	case structpb.NullValue:
+		return lhs != nil &&
+			lhs != structpb.NullValue_NULL_VALUE &&
+			lhs != types.NullValue, nil
+	case uint64:
+		switch l := lhs.(type) {
+		case uint:
+			return uint64(l) != r, nil
+		case uint32:
+			return uint64(l) != r, nil
+		case *wrapperpb.UInt32Value:
+			return uint64(l.GetValue()) != r, nil
+		case uint64:
+			return l != r, nil
+		case *wrapperpb.UInt64Value:
+			return l.GetValue() != r, nil
+		case types.Uint:
+			return uint64(l) != r, nil
+		}
+	}
+	return nil, fmt.Errorf("no such overload")
 }
 
 func strEndsWith(str, suffix interface{}) (interface{}, error) {
