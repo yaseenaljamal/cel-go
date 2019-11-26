@@ -678,8 +678,13 @@ var (
 			},
 		},
 		{
+<<<<<<< HEAD
 			name:  "select_pb3_compare",
 			expr:  `a.single_uint64 > 3u`,
+=======
+			name:  "select_pb3_single_compare",
+			expr:  `a.single_int64 > 3`,
+>>>>>>> function-tables
 			pkg:   "google.expr.proto3.test",
 			types: []proto.Message{&proto3pb.TestAllTypes{}},
 			env: []*exprpb.Decl{
@@ -687,7 +692,7 @@ var (
 			},
 			in: map[string]interface{}{
 				"a": &proto3pb.TestAllTypes{
-					SingleUint64: 10,
+					SingleInt64: 10,
 				},
 			},
 			out: types.True,
@@ -1062,7 +1067,7 @@ func program(tst *testCase, opts ...InterpretableDecorator) (Interpretable, Acti
 	}
 
 	disp := NewDispatcher()
-	disp.Add(functions.StandardOverloads()...)
+	disp.Add(functions.StandardOverloads...)
 	if tst.funcs != nil {
 		disp.Add(tst.funcs...)
 	}

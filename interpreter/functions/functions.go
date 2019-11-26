@@ -51,7 +51,7 @@ type Overload struct {
 type UnaryOp func(value ref.Val) ref.Val
 
 // BinaryOp is a function that takes two values and produces an output.
-type BinaryOp func(lhs ref.Val, rhs ref.Val) ref.Val
+type BinaryOp func(lhs, rhs ref.Val) ref.Val
 
 // FunctionOp is a function with accepts zero or more arguments and produces
 // an value (as interface{}) or error as a result.

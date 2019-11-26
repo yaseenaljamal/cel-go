@@ -237,7 +237,7 @@ func (e *env) ParseSource(src common.Source) (Ast, *Issues) {
 func (e *env) Program(ast Ast, opts ...ProgramOption) (Program, error) {
 	if e.enableBuiltins {
 		opts = append(
-			[]ProgramOption{Functions(functions.StandardOverloads()...)},
+			[]ProgramOption{Functions(functions.StandardOverloads...)},
 			opts...)
 	}
 	return newProgram(e, ast, opts...)

@@ -102,7 +102,7 @@ func NewStandardInterpreter(packager packages.Packager,
 	adapter ref.TypeAdapter,
 	resolver Resolver) Interpreter {
 	dispatcher := NewDispatcher()
-	dispatcher.Add(functions.StandardOverloads()...)
+	dispatcher.Add(functions.StandardOverloads...)
 	return NewInterpreter(dispatcher, packager, provider, adapter, resolver)
 }
 

@@ -15,6 +15,9 @@
 package interpreter
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/google/cel-go/common/overloads"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -101,15 +104,14 @@ func decDisableShortcircuits() InterpretableDecorator {
 // - convert 'in' operations to set membership tests if possible.
 func decOptimize() InterpretableDecorator {
 	return func(i Interpretable) (Interpretable, error) {
-		switch i.(type) {
+		switch expr := i.(type) {
 		case *evalList:
-			return maybeBuildListLiteral(i, i.(*evalList))
+			return maybeBuildListLiteral(i, expr)
 		case *evalMap:
-			return maybeBuildMapLiteral(i, i.(*evalMap))
+			return maybeBuildMapLiteral(i, expr)
 		case *evalBinary:
-			call := i.(*evalBinary)
-			if call.overload == overloads.InList {
-				return maybeOptimizeSetMembership(i, call)
+			if expr.overload == overloads.InList {
+				return maybeOptimizeSetMembership(i, expr)
 			}
 		}
 		return i, nil
@@ -188,4 +190,185 @@ func maybeOptimizeSetMembership(i Interpretable, inlist *evalBinary) (Interpreta
 		argTypeName: typ.TypeName(),
 		valueSet:    valueSet,
 	}, nil
+}
+
+type maybeNativeOverload func(Interpretable) (Interpretable, error)
+
+func isAttrOnlyBinary(call Interpretable) bool {
+	bin, ok := call.(*evalBinary)
+	if !ok {
+		return false
+	}
+	_, lhsIsAttr := bin.lhs.(instAttr)
+	_, rhsIsAttr := bin.rhs.(instAttr)
+	return lhsIsAttr && rhsIsAttr
+}
+
+func isAttrAndConstBinary(call Interpretable) bool {
+	bin, ok := call.(*evalBinary)
+	if !ok {
+		return false
+	}
+	_, lhsIsAttr := bin.lhs.(instAttr)
+	_, lhsIsConst := bin.rhs.(instAttr)
+	_, rhsIsAttr := bin.rhs.(instAttr)
+	_, rhsIsConst := bin.rhs.(instAttr)
+	return lhsIsAttr && rhsIsConst || lhsIsConst && rhsIsAttr
+}
+
+var nativeOverloads = map[string]maybeNativeOverload{
+	overloads.Equals: func(call Interpretable) (Interpretable, error) {
+		if isAttrAndConstBinary(call) {
+
+		}
+		return call, nil
+	},
+	overloads.NotEquals: func(call Interpretable) (Interpretable, error) {
+		if isAttrAndConstBinary(call) {
+
+		}
+		return call, nil
+	},
+	overloads.EndsWithString: func(call Interpretable) (Interpretable, error) {
+		if isAttrOnlyBinary(call) {
+
+		}
+		if isAttrAndConstBinary(call) {
+
+		}
+		return call, nil
+	},
+	overloads.StartsWithString: func(call Interpretable) (Interpretable, error) {
+		if isAttrOnlyBinary(call) {
+			bin := call.(*evalBinary)
+			return &evalBinaryAttrNative{
+				id:      bin.id,
+				lhs:     bin.lhs.(instAttr).Attr(),
+				rhs:     bin.rhs.(instAttr).Attr(),
+				fun:     strStartsWith,
+				adapter: bin.lhs.(instAttr).Adapter(),
+			}, nil
+		}
+		if isAttrAndConstBinary(call) {
+			var arg instAttr
+			var val ref.Val
+			bin := call.(*evalBinary)
+			return &evalBinaryAttrConstNative{
+				id:      bin.id,
+				arg:     arg.Attr(),
+				val:     val,
+				fun:     strStartsWith,
+				adapter: arg.Adapter(),
+			}, nil
+		}
+		return call, nil
+	},
+}
+
+type evalBinaryAttrNative struct {
+	id      int64
+	lhs     Attribute
+	rhs     Attribute
+	fun     func(lhs, rhs interface{}) (interface{}, error)
+	adapter ref.TypeAdapter
+}
+
+func (e *evalBinaryAttrNative) ID() int64 {
+	return e.id
+}
+
+func (e *evalBinaryAttrNative) Eval(ctx Activation) ref.Val {
+	l, err := e.lhs.Resolve(ctx)
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+	lUnk, ok := l.(types.Unknown)
+	if ok {
+		return lUnk
+	}
+	r, err := e.rhs.Resolve(ctx)
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+	rUnk, ok := r.(types.Unknown)
+	if ok {
+		return rUnk
+	}
+	v, err := e.fun(l, r)
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+	return e.adapter.NativeToValue(v)
+}
+
+type evalBinaryAttrConstNative struct {
+	id      int64
+	arg     Attribute
+	val     ref.Val
+	fun     func(lhs, rhs interface{}) (interface{}, error)
+	adapter ref.TypeAdapter
+}
+
+func (e *evalBinaryAttrConstNative) ID() int64 {
+	return e.id
+}
+
+func (e *evalBinaryAttrConstNative) Eval(ctx Activation) ref.Val {
+	arg, err := e.arg.Resolve(ctx)
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+	unk, ok := arg.(types.Unknown)
+	if ok {
+		return unk
+	}
+	v, err := e.fun(arg, e.val.Value())
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+	return e.adapter.NativeToValue(v)
+}
+
+func strEndsWith(str, suffix interface{}) (interface{}, error) {
+	var s, suf string
+	switch v := str.(type) {
+	case string:
+		s = v
+	case types.String:
+		s = string(v)
+	default:
+		return nil, fmt.Errorf("no such overload")
+	}
+
+	switch v := suffix.(type) {
+	case string:
+		suf = v
+	case types.String:
+		suf = string(v)
+	default:
+		return nil, fmt.Errorf("no such overload")
+	}
+	return strings.HasSuffix(s, suf), nil
+}
+
+func strStartsWith(str, prefix interface{}) (interface{}, error) {
+	var s, pre string
+	switch v := str.(type) {
+	case string:
+		s = v
+	case types.String:
+		s = string(v)
+	default:
+		return nil, fmt.Errorf("no such overload")
+	}
+
+	switch v := prefix.(type) {
+	case string:
+		pre = v
+	case types.String:
+		pre = string(v)
+	default:
+		return nil, fmt.Errorf("no such overload")
+	}
+	return strings.HasPrefix(s, pre), nil
 }
