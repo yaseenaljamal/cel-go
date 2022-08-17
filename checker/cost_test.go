@@ -354,6 +354,67 @@ func TestCost(t *testing.T) {
 			hints:  map[string]int64{"str1": 10, "str2": 10},
 			wanted: CostEstimate{Min: 2, Max: 6},
 		},
+		{
+			name: "list size comparison",
+			expr: `list1.size() == list2.size()`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("list1", decls.NewListType(decls.Int)),
+				decls.NewVar("list2", decls.NewListType(decls.Int)),
+			},
+			wanted: CostEstimate{Min: 5, Max: 5},
+		},
+		{
+			name: "list size from ternary",
+			expr: `x > y ? list1.size() : list2.size()`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("x", decls.Int),
+				decls.NewVar("y", decls.Int),
+				decls.NewVar("list1", decls.NewListType(decls.Int)),
+				decls.NewVar("list2", decls.NewListType(decls.Int)),
+			},
+			wanted: CostEstimate{Min: 5, Max: 5},
+		},
+		{
+			name: "str endsWith equality",
+			expr: `str1.endsWith("abcdefghijklmnopqrstuvwxyz") == str2.endsWith("abcdefghijklmnopqrstuvwxyz")`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("str1", decls.String),
+				decls.NewVar("str2", decls.String),
+			},
+			wanted: CostEstimate{Min: 9, Max: 9},
+		},
+		{
+			name:   "nested subexpression operators",
+			expr:   `((5 != 6) == (1 == 2)) == ((3 <= 4) == (9 != 9))`,
+			wanted: CostEstimate{Min: 7, Max: 7},
+		},
+		{
+			name: "str size estimate",
+			expr: `string(timestamp1) == string(timestamp2)`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("timestamp1", decls.Timestamp),
+				decls.NewVar("timestamp2", decls.Timestamp),
+			},
+			wanted: CostEstimate{Min: 5, Max: 1844674407370955268},
+		},
+		{
+			name: "timestamp equality check",
+			expr: `timestamp1 == timestamp2`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("timestamp1", decls.Timestamp),
+				decls.NewVar("timestamp2", decls.Timestamp),
+			},
+			wanted: CostEstimate{Min: 3, Max: 3},
+		},
+		{
+			name: "duration inequality check",
+			expr: `duration1 != duration2`,
+			decls: []*exprpb.Decl{
+				decls.NewVar("duration1", decls.Duration),
+				decls.NewVar("duration2", decls.Duration),
+			},
+			wanted: CostEstimate{Min: 3, Max: 3},
+		},
 	}
 
 	for _, tc := range cases {
