@@ -235,6 +235,7 @@ number, the function behaves the same as split all.
 
 Examples:
 
+	'hello'.split('')                  // returns ['h','e','l','l','o']`
     'hello hello hello'.split(' ')     // returns ['hello', 'hello', 'hello']
     'hello hello hello'.split(' ', 0)  // returns []
     'hello hello hello'.split(' ', 1)  // returns ['hello hello hello']
