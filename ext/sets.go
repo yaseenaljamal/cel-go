@@ -87,13 +87,13 @@ func (setsLib) CompileOptions() []cel.EnvOption {
 	listType := cel.ListType(cel.TypeParamType("T"))
 	return []cel.EnvOption{
 		cel.Function("sets.contains",
-			cel.Overload("sets_contains_list_list", []*cel.Type{listType, listType}, cel.BoolType,
+			cel.Overload("list_sets_contains_list", []*cel.Type{listType, listType}, cel.BoolType,
 				cel.BinaryBinding(setsContains))),
 		cel.Function("sets.equivalent",
-			cel.Overload("sets_equivalent_list_list", []*cel.Type{listType, listType}, cel.BoolType,
+			cel.Overload("list_sets_equivalent_list", []*cel.Type{listType, listType}, cel.BoolType,
 				cel.BinaryBinding(setsEquivalent))),
 		cel.Function("sets.intersects",
-			cel.Overload("sets_intersects_list_list", []*cel.Type{listType, listType}, cel.BoolType,
+			cel.Overload("list_sets_intersects_list", []*cel.Type{listType, listType}, cel.BoolType,
 				cel.BinaryBinding(setsIntersects))),
 	}
 }
