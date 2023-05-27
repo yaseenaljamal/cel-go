@@ -1993,6 +1993,20 @@ func TestOptionalValues(t *testing.T) {
 			out: 42,
 		},
 		{
+			expr: `x.optMap(y, y + 1)`,
+			in: map[string]any{
+				"x": types.OptionalNone,
+			},
+			out: types.OptionalNone,
+		},
+		{
+			expr: `x.optMap(y, y + 1)`,
+			in: map[string]any{
+				"x": types.OptionalOf(types.Int(42)),
+			},
+			out: types.OptionalOf(types.Int(43)),
+		},
+		{
 			expr: `optional.ofNonZeroValue(z).or(optional.of(10)).value() == 42`,
 			in: map[string]any{
 				"z": 42,
@@ -2319,6 +2333,21 @@ func TestOptionalValues(t *testing.T) {
 				t.Errorf("prg.Eval() got %v, wanted %v", out, want)
 			}
 		})
+	}
+}
+
+func TestOptionalMacroError(t *testing.T) {
+	env, err := NewEnv(
+		OptionalTypes(),
+		// Test variables.
+		Variable("x", OptionalType(IntType)),
+	)
+	if err != nil {
+		t.Fatalf("NewEnv() failed: %v", err)
+	}
+	_, iss := env.Compile("x.optMap(y.z, y.z + 1)")
+	if iss.Err() == nil || !strings.Contains(iss.Err().Error(), "variable name must be a simple identifier") {
+		t.Errorf("optMap() got an unexpected result: %v", iss.Err())
 	}
 }
 
