@@ -183,7 +183,15 @@ func (e *Env) addOverload(f *exprpb.Decl, overload *exprpb.Decl_FunctionDecl_Ove
 	for _, existing := range function.GetOverloads() {
 		existingFunction := decls.NewFunctionType(existing.GetResultType(), existing.GetParams()...)
 		existingErased := substitute(emptyMappings, existingFunction, true)
-		overlap := isAssignable(emptyMappings, overloadErased, existingErased) != nil ||
+		overlap := false
+		if existing.GetOverloadId() == overload.GetOverloadId() {
+			if proto.Equal(overloadErased, existingErased) {
+				continue
+			}
+			overlap = true
+		}
+		overlap = overlap ||
+			isAssignable(emptyMappings, overloadErased, existingErased) != nil ||
 			isAssignable(emptyMappings, existingErased, overloadErased) != nil
 		if overlap &&
 			overload.GetIsInstanceFunction() == existing.GetIsInstanceFunction() {
