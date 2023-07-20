@@ -26,6 +26,7 @@ import (
 	antlr "github.com/antlr/antlr4/runtime/Go/antlr/v4"
 
 	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/runes"
 	"github.com/google/cel-go/parser/gen"
@@ -88,7 +89,7 @@ func mustNewParser(opts ...Option) *Parser {
 }
 
 // Parse parses the expression represented by source and returns the result.
-func (p *Parser) Parse(source common.Source) (*exprpb.ParsedExpr, *common.Errors) {
+func (p *Parser) Parse(source common.Source) (*ast.AST, *common.Errors) {
 	errs := common.NewErrors(source)
 	impl := parser{
 		errors:                           &parseErrors{errs},
@@ -114,10 +115,18 @@ func (p *Parser) Parse(source common.Source) (*exprpb.ParsedExpr, *common.Errors
 	} else {
 		e = impl.parse(buf, source.Description())
 	}
-	return &exprpb.ParsedExpr{
-		Expr:       e,
-		SourceInfo: impl.helper.getSourceInfo(),
-	}, errs
+	sourceInfo, err := ast.ProtoToSourceInfo(impl.helper.getSourceInfo())
+	if err != nil {
+		impl.reportError(common.NoLocation,
+			"failed to convert proto source info: %v", impl.helper.getSourceInfo())
+	}
+	out, err := ast.ProtoToExpr(e)
+	if err != nil {
+		impl.reportError(common.NoLocation,
+			"failed to convert proto expression: %v", e)
+	}
+	a := ast.NewAST(out, sourceInfo)
+	return a, errs
 }
 
 // reservedIds are not legal to use as variables.  We exclude them post-parse, as they *are* valid
@@ -150,7 +159,7 @@ var reservedIds = map[string]struct{}{
 // This function calls ParseWithMacros with AllMacros.
 //
 // Deprecated: Use NewParser().Parse() instead.
-func Parse(source common.Source) (*exprpb.ParsedExpr, *common.Errors) {
+func Parse(source common.Source) (*ast.AST, *common.Errors) {
 	return mustNewParser(Macros(AllMacros...)).Parse(source)
 }
 

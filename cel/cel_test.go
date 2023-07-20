@@ -2063,7 +2063,7 @@ func TestOptionalValuesCompile(t *testing.T) {
 			if iss.Err() != nil {
 				t.Fatalf("%v failed: %v", tc.expr, iss.Err())
 			}
-			for id, reference := range ast.refMap {
+			for id, reference := range ast.value.ReferenceMap {
 				other, found := tc.references[id]
 				if !found {
 					t.Errorf("Compile(%v) expected reference %d: %v", tc.expr, id, reference)

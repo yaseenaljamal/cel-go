@@ -31,17 +31,14 @@ import (
 )
 
 func TestConvertAST(t *testing.T) {
-	goAST := &ast.CheckedAST{
-		Expr:       &exprpb.Expr{},
-		SourceInfo: &exprpb.SourceInfo{},
-		TypeMap: map[int64]*types.Type{
-			1: types.BoolType,
-			2: types.DynType,
-		},
-		ReferenceMap: map[int64]*ast.ReferenceInfo{
-			1: ast.NewFunctionReference(overloads.LogicalNot),
-			2: ast.NewIdentReference("TRUE", types.True),
-		},
+	goAST := ast.NewAST(nil, ast.NewSourceInfo(nil))
+	goAST.TypeMap = map[int64]*types.Type{
+		1: types.BoolType,
+		2: types.DynType,
+	}
+	goAST.ReferenceMap = map[int64]*ast.ReferenceInfo{
+		1: ast.NewFunctionReference(overloads.LogicalNot),
+		2: ast.NewIdentReference("TRUE", types.True),
 	}
 
 	exprAST := &exprpb.CheckedExpr{
@@ -62,9 +59,9 @@ func TestConvertAST(t *testing.T) {
 		},
 	}
 
-	checkedAST, err := ast.CheckedExprToCheckedAST(exprAST)
+	checkedAST, err := ast.ProtoToAST(exprAST)
 	if err != nil {
-		t.Fatalf("CheckedExprToCheckedAST() failed: %v", err)
+		t.Fatalf("ProtoToAST() failed: %v", err)
 	}
 	if !reflect.DeepEqual(checkedAST.ReferenceMap, goAST.ReferenceMap) ||
 		!reflect.DeepEqual(checkedAST.TypeMap, goAST.TypeMap) {
@@ -74,9 +71,9 @@ func TestConvertAST(t *testing.T) {
 		!checkedAST.ReferenceMap[2].Equals(goAST.ReferenceMap[2]) {
 		t.Error("converted reference info values not equal")
 	}
-	checkedExpr, err := ast.CheckedASTToCheckedExpr(goAST)
+	checkedExpr, err := ast.ASTToProto(goAST)
 	if err != nil {
-		t.Fatalf("CheckedASTToCheckedExpr() failed: %v", err)
+		t.Fatalf("ASTToProto() failed: %v", err)
 	}
 	if !proto.Equal(checkedExpr, exprAST) {
 		t.Errorf("conversion to protobuf did not produce identical results: got %v, wanted %v", checkedExpr, exprAST)
@@ -175,7 +172,7 @@ func TestReferenceInfoAddOverload(t *testing.T) {
 }
 
 func TestReferenceInfoToReferenceExprError(t *testing.T) {
-	out, err := ast.ReferenceInfoToReferenceExpr(
+	out, err := ast.ReferenceInfoToProto(
 		ast.NewIdentReference("SECOND", types.Duration{Duration: time.Duration(1) * time.Second}))
 	if err == nil {
 		t.Errorf("ReferenceInfoToReferenceExpr() got %v, wanted error", out)
@@ -183,7 +180,7 @@ func TestReferenceInfoToReferenceExprError(t *testing.T) {
 }
 
 func TestReferenceExprToReferenceInfoError(t *testing.T) {
-	out, err := ast.ReferenceExprToReferenceInfo(&exprpb.Reference{Value: &exprpb.Constant{}})
+	out, err := ast.ProtoToReferenceInfo(&exprpb.Reference{Value: &exprpb.Constant{}})
 	if err == nil {
 		t.Errorf("ReferenceExprToReferenceInfo() got %v, wanted error", out)
 	}

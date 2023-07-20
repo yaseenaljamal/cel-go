@@ -16,74 +16,176 @@
 package ast
 
 import (
-	"fmt"
-
+	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
-
-	structpb "google.golang.org/protobuf/types/known/structpb"
-
-	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
-// CheckedAST contains a protobuf expression and source info along with CEL-native type and reference information.
-type CheckedAST struct {
-	Expr         *exprpb.Expr
-	SourceInfo   *exprpb.SourceInfo
+type AST struct {
+	expr         Expr
+	SourceInfo   *SourceInfo
 	TypeMap      map[int64]*types.Type
 	ReferenceMap map[int64]*ReferenceInfo
+	checked      bool
 }
 
-// CheckedASTToCheckedExpr converts a CheckedAST to a CheckedExpr protobouf.
-func CheckedASTToCheckedExpr(ast *CheckedAST) (*exprpb.CheckedExpr, error) {
-	refMap := make(map[int64]*exprpb.Reference, len(ast.ReferenceMap))
-	for id, ref := range ast.ReferenceMap {
-		r, err := ReferenceInfoToReferenceExpr(ref)
-		if err != nil {
-			return nil, err
-		}
-		refMap[id] = r
-	}
-	typeMap := make(map[int64]*exprpb.Type, len(ast.TypeMap))
-	for id, typ := range ast.TypeMap {
-		t, err := types.TypeToExprType(typ)
-		if err != nil {
-			return nil, err
-		}
-		typeMap[id] = t
-	}
-	return &exprpb.CheckedExpr{
-		Expr:         ast.Expr,
-		SourceInfo:   ast.SourceInfo,
-		ReferenceMap: refMap,
-		TypeMap:      typeMap,
-	}, nil
+func (a *AST) Expr() Expr {
+	return a.expr
 }
 
-// CheckedExprToCheckedAST converts a CheckedExpr protobuf to a CheckedAST instance.
-func CheckedExprToCheckedAST(checked *exprpb.CheckedExpr) (*CheckedAST, error) {
-	refMap := make(map[int64]*ReferenceInfo, len(checked.GetReferenceMap()))
-	for id, ref := range checked.GetReferenceMap() {
-		r, err := ReferenceExprToReferenceInfo(ref)
-		if err != nil {
-			return nil, err
-		}
-		refMap[id] = r
+func (a *AST) GetType(id int64) *types.Type {
+	if t, found := a.TypeMap[id]; found {
+		return t
 	}
-	typeMap := make(map[int64]*types.Type, len(checked.GetTypeMap()))
-	for id, typ := range checked.GetTypeMap() {
-		t, err := types.ExprTypeToType(typ)
-		if err != nil {
-			return nil, err
-		}
-		typeMap[id] = t
+	return types.DynType
+}
+
+func (a *AST) GetOverloadIDs(id int64) []string {
+	if ref, found := a.ReferenceMap[id]; found {
+		return ref.OverloadIDs
 	}
-	return &CheckedAST{
-		Expr:         checked.GetExpr(),
-		SourceInfo:   checked.GetSourceInfo(),
-		ReferenceMap: refMap,
+	return []string{}
+}
+
+func (a *AST) IsChecked() bool {
+	return a.checked
+}
+
+func NewAST(e Expr, sourceInfo *SourceInfo) *AST {
+	return &AST{
+		expr:         e,
+		SourceInfo:   sourceInfo,
+		TypeMap:      make(map[int64]*types.Type),
+		ReferenceMap: make(map[int64]*ReferenceInfo),
+		checked:      false,
+	}
+}
+
+func NewCheckedAST(in *AST, typeMap map[int64]*types.Type, refMap map[int64]*ReferenceInfo) *AST {
+	return &AST{
+		expr:         in.expr,
+		SourceInfo:   in.SourceInfo,
 		TypeMap:      typeMap,
-	}, nil
+		ReferenceMap: refMap,
+		checked:      true,
+	}
+}
+
+func NewSourceInfo(src common.Source) *SourceInfo {
+	var lineOffsets []int32
+	var desc string
+	if src != nil {
+		desc = src.Description()
+		lineOffsets = src.LineOffsets()
+	}
+	return &SourceInfo{
+		desc:         desc,
+		lines:        lineOffsets,
+		offsetRanges: make(map[int64]OffsetRange),
+		macroCalls:   make(map[int64]Expr),
+	}
+}
+
+type SourceInfo struct {
+	syntax       string
+	desc         string
+	lines        []int32
+	offsetRanges map[int64]OffsetRange
+	macroCalls   map[int64]Expr
+}
+
+func (s *SourceInfo) LineOffsets() []int32 {
+	if s == nil {
+		return []int32{}
+	}
+	return s.lines
+}
+
+func (s *SourceInfo) MacroCalls() map[int64]Expr {
+	if s == nil {
+		return make(map[int64]Expr, 0)
+	}
+	return s.macroCalls
+}
+
+func (s *SourceInfo) GetMacroCall(id int64) (Expr, bool) {
+	if s == nil {
+		return nil, false
+	}
+	e, found := s.macroCalls[id]
+	return e, found
+}
+
+func (s *SourceInfo) SetMacroCall(id int64, e Expr) {
+	if s == nil {
+		return
+	}
+	s.macroCalls[id] = e
+}
+
+func (s *SourceInfo) GetOffsetRange(id int64) (OffsetRange, bool) {
+	if s == nil {
+		return OffsetRange{}, false
+	}
+	o, found := s.offsetRanges[id]
+	return o, found
+}
+
+func (s *SourceInfo) SetOffsetRange(id int64, o OffsetRange) {
+	if s == nil {
+		return
+	}
+	s.offsetRanges[id] = o
+}
+
+func (s *SourceInfo) GetStartLocation(id int64) common.Location {
+	var line = 1
+	if o, found := s.GetOffsetRange(id); found {
+		col := int(o.Start)
+		for _, lineOffset := range s.LineOffsets() {
+			if lineOffset < o.Start {
+				line++
+				col = int(o.Start - lineOffset)
+			} else {
+				break
+			}
+		}
+		return common.NewLocation(line, col)
+	}
+	return common.NoLocation
+}
+
+func (s *SourceInfo) GetStopLocation(id int64) common.Location {
+	var line = 1
+	if o, found := s.GetOffsetRange(id); found {
+		col := int(o.Stop)
+		for _, lineOffset := range s.LineOffsets() {
+			if lineOffset < o.Stop {
+				line++
+				col = int(o.Stop - lineOffset)
+			} else {
+				break
+			}
+		}
+		return common.NewLocation(line, col)
+	}
+	return common.NoLocation
+}
+
+func (s *SourceInfo) ComputeOffset(line, col int32) int32 {
+	if line == 1 {
+		return col
+	}
+	if line < 1 || line > int32(len(s.lines)) {
+		return -1
+	}
+	offset := s.LineOffsets()[line-2]
+	return offset + col
+}
+
+type OffsetRange struct {
+	Start int32
+	Stop  int32
 }
 
 // ReferenceInfo contains a CEL native representation of an identifier reference which may refer to
@@ -147,80 +249,4 @@ func (r *ReferenceInfo) Equals(other *ReferenceInfo) bool {
 		return false
 	}
 	return true
-}
-
-// ReferenceInfoToReferenceExpr converts a ReferenceInfo instance to a protobuf Reference suitable for serialization.
-func ReferenceInfoToReferenceExpr(info *ReferenceInfo) (*exprpb.Reference, error) {
-	c, err := ValToConstant(info.Value)
-	if err != nil {
-		return nil, err
-	}
-	return &exprpb.Reference{
-		Name:       info.Name,
-		OverloadId: info.OverloadIDs,
-		Value:      c,
-	}, nil
-}
-
-// ReferenceExprToReferenceInfo converts a protobuf Reference into a CEL-native ReferenceInfo instance.
-func ReferenceExprToReferenceInfo(ref *exprpb.Reference) (*ReferenceInfo, error) {
-	v, err := ConstantToVal(ref.GetValue())
-	if err != nil {
-		return nil, err
-	}
-	return &ReferenceInfo{
-		Name:        ref.GetName(),
-		OverloadIDs: ref.GetOverloadId(),
-		Value:       v,
-	}, nil
-}
-
-// ValToConstant converts a CEL-native ref.Val to a protobuf Constant.
-//
-// Only simple scalar types are supported by this method.
-func ValToConstant(v ref.Val) (*exprpb.Constant, error) {
-	if v == nil {
-		return nil, nil
-	}
-	switch v.Type() {
-	case types.BoolType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_BoolValue{BoolValue: v.Value().(bool)}}, nil
-	case types.BytesType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_BytesValue{BytesValue: v.Value().([]byte)}}, nil
-	case types.DoubleType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_DoubleValue{DoubleValue: v.Value().(float64)}}, nil
-	case types.IntType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_Int64Value{Int64Value: v.Value().(int64)}}, nil
-	case types.NullType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_NullValue{NullValue: structpb.NullValue_NULL_VALUE}}, nil
-	case types.StringType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_StringValue{StringValue: v.Value().(string)}}, nil
-	case types.UintType:
-		return &exprpb.Constant{ConstantKind: &exprpb.Constant_Uint64Value{Uint64Value: v.Value().(uint64)}}, nil
-	}
-	return nil, fmt.Errorf("unsupported constant kind: %v", v.Type())
-}
-
-// ConstantToVal converts a protobuf Constant to a CEL-native ref.Val.
-func ConstantToVal(c *exprpb.Constant) (ref.Val, error) {
-	if c == nil {
-		return nil, nil
-	}
-	switch c.GetConstantKind().(type) {
-	case *exprpb.Constant_BoolValue:
-		return types.Bool(c.GetBoolValue()), nil
-	case *exprpb.Constant_BytesValue:
-		return types.Bytes(c.GetBytesValue()), nil
-	case *exprpb.Constant_DoubleValue:
-		return types.Double(c.GetDoubleValue()), nil
-	case *exprpb.Constant_Int64Value:
-		return types.Int(c.GetInt64Value()), nil
-	case *exprpb.Constant_NullValue:
-		return types.NullValue, nil
-	case *exprpb.Constant_StringValue:
-		return types.String(c.GetStringValue()), nil
-	case *exprpb.Constant_Uint64Value:
-		return types.Uint(c.GetUint64Value()), nil
-	}
-	return nil, fmt.Errorf("unsupported constant kind: %v", c.GetConstantKind())
 }

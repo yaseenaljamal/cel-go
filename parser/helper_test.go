@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/ast"
 
 	"google.golang.org/protobuf/proto"
 
@@ -44,15 +45,26 @@ func TestExprHelperCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewParser() failed: %v", err)
 	}
-	ast, errs := p.Parse(src)
+	parsed, errs := p.Parse(src)
 	if errs != nil && len(errs.GetErrors()) != 0 {
 		t.Fatalf("p.Parse(%v) failed: %v", src, errs.ToDisplayString())
 	}
 
 	// id generation is consistent between runs, and in this case '27' refers to the
 	// macro expression that's the sole argument to the noop() macro.
-	macroTarget := ast.GetSourceInfo().GetMacroCalls()[int64(27)]
-	if proto.Equal(ast.GetExpr(), macroTarget) {
-		t.Errorf("Copy() failed to provide a unique ids: %v", macroTarget)
+	macroTarget, found := parsed.SourceInfo.GetMacroCall(27)
+	if !found {
+		t.Fatal("GetMacroCall(27) failed to find call")
+	}
+	macroExpr, err := ast.ExprToProto(macroTarget)
+	if err != nil {
+		t.Fatalf("ExprToProto() failed: %v", err)
+	}
+	protoExpr, err := ast.ExprToProto(parsed.Expr())
+	if err != nil {
+		t.Fatalf("ExprToProto() failed: %v", err)
+	}
+	if proto.Equal(protoExpr, macroExpr) {
+		t.Errorf("Copy() failed to provide a unique ids: %v", macroExpr)
 	}
 }

@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"testing"
 
-	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+	"github.com/google/cel-go/common/ast"
 )
 
 func TestContainers_ResolveCandidateNames(t *testing.T) {
@@ -204,13 +204,8 @@ func TestContainers_Extend_Name(t *testing.T) {
 }
 
 func TestContainers_ToQualifiedName(t *testing.T) {
-	ident := &exprpb.Expr{
-		ExprKind: &exprpb.Expr_IdentExpr{
-			IdentExpr: &exprpb.Expr_Ident{
-				Name: "var",
-			},
-		},
-	}
+	exprFactory := ast.NewExprFactory()
+	ident := exprFactory.NewIdent(1, "var")
 	idName, found := ToQualifiedName(ident)
 	if !found {
 		t.Errorf("got not found from %v expr, wanted found", ident)
@@ -218,14 +213,7 @@ func TestContainers_ToQualifiedName(t *testing.T) {
 	if idName != "var" {
 		t.Errorf("got %v, wanted 'var'", idName)
 	}
-	sel := &exprpb.Expr{
-		ExprKind: &exprpb.Expr_SelectExpr{
-			SelectExpr: &exprpb.Expr_Select{
-				Operand: ident,
-				Field:   "qualifier",
-			},
-		},
-	}
+	sel := exprFactory.NewSelect(2, ident, "qualifier")
 	qualName, found := ToQualifiedName(sel)
 	if !found {
 		t.Errorf("got not found from %v expr, wanted found", sel)
@@ -234,22 +222,14 @@ func TestContainers_ToQualifiedName(t *testing.T) {
 		t.Errorf("got %v, wanted 'var.qualifier'", qualName)
 	}
 
-	sel.GetSelectExpr().TestOnly = true
-	_, found = ToQualifiedName(sel)
+	test := exprFactory.NewPresenceTest(3, ident, "qualifier")
+	_, found = ToQualifiedName(test)
 	if found {
 		t.Error("got found, wanted not found for test-only expression")
 	}
 
-	unary := &exprpb.Expr{
-		ExprKind: &exprpb.Expr_CallExpr{
-			CallExpr: &exprpb.Expr_Call{
-				Function: "!_",
-				Args:     []*exprpb.Expr{ident},
-			},
-		},
-	}
-	sel.GetSelectExpr().TestOnly = false
-	sel.GetSelectExpr().Operand = unary
+	unary := exprFactory.NewCall(2, "!_", ident)
+	sel = exprFactory.NewSelect(3, unary, "qualifier")
 	_, found = ToQualifiedName(sel)
 	if found {
 		t.Errorf("got found, wanted not found for %v", sel)

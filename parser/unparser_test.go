@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/operators"
 
 	"google.golang.org/protobuf/proto"
@@ -463,7 +464,7 @@ func TestUnparse(t *testing.T) {
 			if len(iss.GetErrors()) > 0 {
 				t.Fatalf("parser.Parse(%s) failed: %v", tc.in, iss.ToDisplayString())
 			}
-			out, err := Unparse(p.GetExpr(), p.GetSourceInfo(), tc.unparserOptions...)
+			out, err := Unparse(p.Expr(), p.SourceInfo, tc.unparserOptions...)
 
 			if err != nil {
 				t.Fatalf("Unparse(%s) failed: %v", tc.in, err)
@@ -479,8 +480,14 @@ func TestUnparse(t *testing.T) {
 			if len(iss.GetErrors()) > 0 {
 				t.Fatalf("parser.Parse(%s) roundtrip failed: %v", tc.in, iss.ToDisplayString())
 			}
-			before := p.GetExpr()
-			after := p2.GetExpr()
+			before, err := ast.ExprToProto(p.Expr())
+			if err != nil {
+				t.Fatalf("ast.ExprToProto() failed: %v", err)
+			}
+			after, err := ast.ExprToProto(p2.Expr())
+			if err != nil {
+				t.Fatalf("ast.ExprToProto() failed: %v", err)
+			}
 			if !proto.Equal(before, after) {
 				t.Errorf("Roundtrip Parse() differs from original. Got '%v', wanted '%v'", before, after)
 			}
@@ -503,15 +510,6 @@ func TestUnparseErrors(t *testing.T) {
 		unparserOptions []UnparserOption
 	}{
 		{name: "empty_expr", in: &exprpb.Expr{}, err: errors.New("unsupported expression")},
-		{
-			name: "bad_constant",
-			in: &exprpb.Expr{
-				ExprKind: &exprpb.Expr_ConstExpr{
-					ConstExpr: &exprpb.Constant{},
-				},
-			},
-			err: errors.New("unsupported constant"),
-		},
 		{
 			name: "bad_args",
 			in: &exprpb.Expr{
@@ -600,7 +598,12 @@ func TestUnparseErrors(t *testing.T) {
 	for _, tst := range tests {
 		tc := tst
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := Unparse(tc.in, &exprpb.SourceInfo{}, tc.unparserOptions...)
+			info := ast.NewSourceInfo(nil)
+			e, err := ast.ProtoToExpr(tc.in)
+			if err != nil {
+				t.Fatalf("ast.ProtoToExpr(%v) failed: %v", tc.in, err)
+			}
+			out, err := Unparse(e, info, tc.unparserOptions...)
 			if err == nil {
 				t.Fatalf("Unparse(%v) got %v, wanted error %v", tc.in, out, tc.err)
 			}

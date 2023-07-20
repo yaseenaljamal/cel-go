@@ -22,19 +22,17 @@ import (
 	"github.com/google/cel-go/common/containers"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
-
-	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
 // Interpreter generates a new Interpretable from a checked or unchecked expression.
 type Interpreter interface {
 	// NewInterpretable creates an Interpretable from a checked expression and an
 	// optional list of InterpretableDecorator values.
-	NewInterpretable(checked *ast.CheckedAST, decorators ...InterpretableDecorator) (Interpretable, error)
+	NewInterpretable(checked *ast.AST, decorators ...InterpretableDecorator) (Interpretable, error)
 
 	// NewUncheckedInterpretable returns an Interpretable from a parsed expression
 	// and an optional list of InterpretableDecorator values.
-	NewUncheckedInterpretable(expr *exprpb.Expr, decorators ...InterpretableDecorator) (Interpretable, error)
+	NewUncheckedInterpretable(expr *ast.AST, decorators ...InterpretableDecorator) (Interpretable, error)
 }
 
 // EvalObserver is a functional interface that accepts an expression id and an observed value.
@@ -177,8 +175,11 @@ func NewInterpreter(dispatcher Dispatcher,
 
 // NewIntepretable implements the Interpreter interface method.
 func (i *exprInterpreter) NewInterpretable(
-	checked *ast.CheckedAST,
+	checked *ast.AST,
 	decorators ...InterpretableDecorator) (Interpretable, error) {
+	if !checked.IsChecked() {
+		return i.NewUncheckedInterpretable(checked, decorators...)
+	}
 	p := newPlanner(
 		i.dispatcher,
 		i.provider,
@@ -187,12 +188,12 @@ func (i *exprInterpreter) NewInterpretable(
 		i.container,
 		checked,
 		decorators...)
-	return p.Plan(checked.Expr)
+	return p.Plan(checked.Expr())
 }
 
 // NewUncheckedIntepretable implements the Interpreter interface method.
 func (i *exprInterpreter) NewUncheckedInterpretable(
-	expr *exprpb.Expr,
+	unchecked *ast.AST,
 	decorators ...InterpretableDecorator) (Interpretable, error) {
 	p := newUncheckedPlanner(
 		i.dispatcher,
@@ -201,5 +202,5 @@ func (i *exprInterpreter) NewUncheckedInterpretable(
 		i.attrFactory,
 		i.container,
 		decorators...)
-	return p.Plan(expr)
+	return p.Plan(unchecked.Expr())
 }

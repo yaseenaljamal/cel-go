@@ -47,16 +47,13 @@ func CheckedExprToAst(checkedExpr *exprpb.CheckedExpr) *Ast {
 //
 // Prefer CheckedExprToAst if loading expressions from storage.
 func CheckedExprToAstWithSource(checkedExpr *exprpb.CheckedExpr, src Source) (*Ast, error) {
-	checkedAST, err := ast.CheckedExprToCheckedAST(checkedExpr)
+	checkedAST, err := ast.ProtoToAST(checkedExpr)
 	if err != nil {
 		return nil, err
 	}
 	return &Ast{
-		expr:    checkedAST.Expr,
-		info:    checkedAST.SourceInfo,
-		source:  src,
-		refMap:  checkedAST.ReferenceMap,
-		typeMap: checkedAST.TypeMap,
+		value:  checkedAST,
+		source: src,
 	}, nil
 }
 
@@ -67,13 +64,7 @@ func AstToCheckedExpr(a *Ast) (*exprpb.CheckedExpr, error) {
 	if !a.IsChecked() {
 		return nil, fmt.Errorf("cannot convert unchecked ast")
 	}
-	cAst := &ast.CheckedAST{
-		Expr:         a.expr,
-		SourceInfo:   a.info,
-		ReferenceMap: a.refMap,
-		TypeMap:      a.typeMap,
-	}
-	return ast.CheckedASTToCheckedExpr(cAst)
+	return ast.ASTToProto(a.value)
 }
 
 // ParsedExprToAst converts a parsed expression proto message to an Ast.
@@ -89,25 +80,36 @@ func ParsedExprToAst(parsedExpr *exprpb.ParsedExpr) *Ast {
 //
 // Prefer ParsedExprToAst if loading expressions from storage.
 func ParsedExprToAstWithSource(parsedExpr *exprpb.ParsedExpr, src Source) *Ast {
+	// TODO: clean this up since it's a bit of a frankenstein
 	si := parsedExpr.GetSourceInfo()
 	if si == nil {
 		si = &exprpb.SourceInfo{}
 	}
+	info, _ := ast.ProtoToSourceInfo(si)
 	if src == nil {
 		src = common.NewInfoSource(si)
 	}
+	e, _ := ast.ProtoToExpr(parsedExpr.GetExpr())
+	parsed := ast.NewAST(e, info)
 	return &Ast{
-		expr:   parsedExpr.GetExpr(),
-		info:   si,
+		value:  parsed,
 		source: src,
 	}
 }
 
 // AstToParsedExpr converts an Ast to an protobuf ParsedExpr value.
 func AstToParsedExpr(a *Ast) (*exprpb.ParsedExpr, error) {
+	e, err := ast.ExprToProto(a.CELExpr())
+	if err != nil {
+		return nil, err
+	}
+	info, err := ast.SourceInfoToProto(a.CELSourceInfo())
+	if err != nil {
+		return nil, err
+	}
 	return &exprpb.ParsedExpr{
-		Expr:       a.Expr(),
-		SourceInfo: a.SourceInfo(),
+		Expr:       e,
+		SourceInfo: info,
 	}, nil
 }
 
@@ -116,9 +118,7 @@ func AstToParsedExpr(a *Ast) (*exprpb.ParsedExpr, error) {
 // Note, the conversion may not be an exact replica of the original expression, but will produce
 // a string that is semantically equivalent and whose textual representation is stable.
 func AstToString(a *Ast) (string, error) {
-	expr := a.Expr()
-	info := a.SourceInfo()
-	return parser.Unparse(expr, info)
+	return parser.Unparse(a.CELExpr(), a.CELSourceInfo())
 }
 
 // RefValueToValue converts between ref.Val and api.expr.Value.

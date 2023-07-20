@@ -419,8 +419,8 @@ func (stringFormatValidator) Configure(config cel.MutableValidatorConfig) error 
 
 // Validate parses all literal format strings and type checks the format clause against the argument
 // at the corresponding ordinal within the list literal argument to the function, if one is specified.
-func (stringFormatValidator) Validate(env *cel.Env, _ cel.ValidatorConfig, a *ast.CheckedAST, iss *cel.Issues) {
-	root := ast.NavigateCheckedAST(a)
+func (stringFormatValidator) Validate(env *cel.Env, _ cel.ValidatorConfig, a *ast.AST, iss *cel.Issues) {
+	root := ast.NavigateAST(a)
 	formatCallExprs := ast.MatchDescendants(root, matchConstantFormatStringWithListLiteralArgs)
 	for _, e := range formatCallExprs {
 		call := e.AsCall()
@@ -470,7 +470,7 @@ func matchConstantFormatStringWithListLiteralArgs(e ast.NavigableExpr) bool {
 		return false
 	}
 	formatString := call.Target()
-	if formatString.Kind() != ast.LiteralKind && formatString.Type() != cel.StringType {
+	if formatString.Kind() != ast.LiteralKind && formatString.AsLiteral().Type() != cel.StringType {
 		return false
 	}
 	args := call.Args()
@@ -483,7 +483,7 @@ func matchConstantFormatStringWithListLiteralArgs(e ast.NavigableExpr) bool {
 
 // stringFormatChecker implements the formatStringInterpolater interface
 type stringFormatChecker struct {
-	args          []ast.NavigableExpr
+	args          []ast.Expr
 	argsRequested int
 	currArgIndex  int64
 	typeMap       map[int64]*cel.Type
@@ -593,7 +593,7 @@ func (c *stringFormatChecker) verifyTypeOneOf(id int64, validTypes ...*cel.Type)
 	return false
 }
 
-func (c *stringFormatChecker) verifyString(sub ast.NavigableExpr) (bool, int64) {
+func (c *stringFormatChecker) verifyString(sub ast.Expr) (bool, int64) {
 	paramA := cel.TypeParamType("A")
 	paramB := cel.TypeParamType("B")
 	subVerified := c.verifyTypeOneOf(sub.ID(),
@@ -603,18 +603,33 @@ func (c *stringFormatChecker) verifyString(sub ast.NavigableExpr) (bool, int64) 
 	if !subVerified {
 		return false, sub.ID()
 	}
-	if sub.Kind() != ast.ListKind && sub.Kind() != ast.MapKind {
+	switch sub.Kind() {
+	case ast.ListKind:
+		for _, e := range sub.AsList().Elements() {
+			// recursively verify if we're dealing with a list/map
+			verified, id := c.verifyString(e)
+			if !verified {
+				return false, id
+			}
+		}
+		return true, sub.ID()
+	case ast.MapKind:
+		for _, e := range sub.AsMap().Entries() {
+			// recursively verify if we're dealing with a list/map
+			entry := e.AsMapEntry()
+			verified, id := c.verifyString(entry.Key())
+			if !verified {
+				return false, id
+			}
+			verified, id = c.verifyString(entry.Value())
+			if !verified {
+				return false, id
+			}
+		}
+		return true, sub.ID()
+	default:
 		return true, sub.ID()
 	}
-	members := sub.Children()
-	for _, m := range members {
-		// recursively verify if we're dealing with a list/map
-		verified, id := c.verifyString(m)
-		if !verified {
-			return false, id
-		}
-	}
-	return true, sub.ID()
 }
 
 // helper routines for reporting common errors during string formatting static validation and

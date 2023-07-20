@@ -282,11 +282,11 @@ var testCases = []testInfo{
 	},
 	{
 		expr: `[timestamp(0), timestamp(1)]`,
-		out:  `[timestamp(0), timestamp(1)]`,
+		out:  `[timestamp("1970-01-01T00:00:00Z"), timestamp("1970-01-01T00:00:01Z")]`,
 	},
 	{
 		expr: `{"epoch": timestamp(0)}`,
-		out:  `{"epoch": timestamp(0)}`,
+		out:  `{"epoch": timestamp("1970-01-01T00:00:00Z")}`,
 	},
 	{
 		in:   partialActivation(map[string]any{"x": false}, "y"),
@@ -467,16 +467,15 @@ func TestPrune(t *testing.T) {
 		interp := NewInterpreter(dispatcher, containers.DefaultContainer, reg, reg, attrs)
 
 		interpretable, _ := interp.NewUncheckedInterpretable(
-			ast.GetExpr(),
-			ExhaustiveEval(), Observe(EvalStateObserver(state)))
+			ast, ExhaustiveEval(), Observe(EvalStateObserver(state)))
 		interpretable.Eval(testActivation(t, tst.in))
-		newExpr := PruneAst(ast.GetExpr(), ast.GetSourceInfo().GetMacroCalls(), state)
+		newExpr := PruneAst(ast.Expr(), ast.SourceInfo.MacroCalls(), state)
 		if tst.iterRange != "" {
-			compre := newExpr.GetExpr().GetComprehensionExpr()
+			compre := newExpr.Expr().AsComprehension()
 			if compre == nil {
-				t.Fatalf("iter range check cannot operate on non comprehension output: %v", newExpr.GetExpr())
+				t.Fatalf("iter range check cannot operate on non comprehension output: %v", newExpr.Expr())
 			}
-			gotIterRange, err := parser.Unparse(compre.GetIterRange(), newExpr.GetSourceInfo())
+			gotIterRange, err := parser.Unparse(compre.IterRange(), newExpr.SourceInfo)
 			if err != nil {
 				t.Fatalf("parser.Unparse() failed: %v", err)
 			}
@@ -484,7 +483,7 @@ func TestPrune(t *testing.T) {
 				t.Errorf("iter range unparse got: %v, wanted %v", gotIterRange, tst.iterRange)
 			}
 		}
-		actual, err := parser.Unparse(newExpr.GetExpr(), newExpr.GetSourceInfo())
+		actual, err := parser.Unparse(newExpr.Expr(), newExpr.SourceInfo)
 		if err != nil {
 			t.Fatalf("parser.Unparse() failed: %v", err)
 		}

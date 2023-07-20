@@ -293,7 +293,7 @@ func (t *Type) isTypeInternal(other *Type, checkTypeParamName bool) bool {
 	if t == other {
 		return true
 	}
-	if t.Kind() != other.Kind() || len(t.Parameters()) != len(other.Parameters()) {
+	if len(t.Parameters()) != len(other.Parameters()) {
 		return false
 	}
 	if (checkTypeParamName || t.Kind() != TypeParamKind) && t.TypeName() != other.TypeName() {

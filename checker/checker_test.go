@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/common"
-	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/containers"
 	"github.com/google/cel-go/common/decls"
 	"github.com/google/cel-go/common/stdlib"
@@ -2350,7 +2349,7 @@ func TestCheck(t *testing.T) {
 				t.Errorf("Expected error not thrown: %s", tc.err)
 			}
 
-			actual := cAst.TypeMap[pAst.Expr.Id]
+			actual := cAst.TypeMap[pAst.Expr().ID()]
 			if tc.err == "" {
 				if actual == nil || !actual.IsEquivalentType(tc.outType) {
 					t.Error(test.DiffMessage("Type Error", actual, tc.outType))
@@ -2358,11 +2357,7 @@ func TestCheck(t *testing.T) {
 			}
 
 			if tc.out != "" {
-				chkExpr, err := ast.CheckedASTToCheckedExpr(cAst)
-				if err != nil {
-					t.Fatalf("CheckedAstToCheckedExpr() failed: %v", err)
-				}
-				actualStr := Print(pAst.Expr, chkExpr)
+				actualStr := Print(pAst.Expr(), cAst)
 				if !test.Compare(actualStr, tc.out) {
 					t.Error(test.DiffMessage("Structure error", actualStr, tc.out))
 				}
@@ -2445,7 +2440,7 @@ func BenchmarkCheck(b *testing.B) {
 					b.Errorf("Expected error not thrown: %s", tc.err)
 				}
 
-				actual := cAst.TypeMap[pAst.Expr.Id]
+				actual := cAst.TypeMap[pAst.Expr().ID()]
 				if tc.err == "" {
 					if actual == nil || !actual.IsEquivalentType(tc.outType) {
 						b.Error(test.DiffMessage("Type Error", actual, tc.outType))
@@ -2453,11 +2448,7 @@ func BenchmarkCheck(b *testing.B) {
 				}
 
 				if tc.out != "" {
-					chkExpr, err := ast.CheckedASTToCheckedExpr(cAst)
-					if err != nil {
-						b.Fatalf("CheckedAstToCheckedExpr() failed: %v", err)
-					}
-					actualStr := Print(pAst.Expr, chkExpr)
+					actualStr := Print(pAst.Expr(), cAst)
 					if !test.Compare(actualStr, tc.out) {
 						b.Error(test.DiffMessage("Structure error", actualStr, tc.out))
 					}
