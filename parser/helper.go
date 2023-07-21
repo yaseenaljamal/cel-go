@@ -17,8 +17,6 @@ package parser
 import (
 	"sync"
 
-	antlr "github.com/antlr/antlr4/runtime/Go/antlr/v4"
-
 	"github.com/google/cel-go/common"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
@@ -26,7 +24,6 @@ import (
 
 type parserHelper struct {
 	source     common.Source
-	nextID     int64
 	positions  map[int64]int32
 	macroCalls map[int64]*exprpb.Expr
 }
@@ -34,7 +31,6 @@ type parserHelper struct {
 func newParserHelper(source common.Source) *parserHelper {
 	return &parserHelper{
 		source:     source,
-		nextID:     1,
 		positions:  make(map[int64]int32),
 		macroCalls: make(map[int64]*exprpb.Expr),
 	}
@@ -48,77 +44,77 @@ func (p *parserHelper) getSourceInfo() *exprpb.SourceInfo {
 		MacroCalls:  p.macroCalls}
 }
 
-func (p *parserHelper) newLiteral(ctx any, value *exprpb.Constant) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newLiteral(id int64, value *exprpb.Constant) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_ConstExpr{ConstExpr: value}
 	return exprNode
 }
 
-func (p *parserHelper) newLiteralBool(ctx any, value bool) *exprpb.Expr {
-	return p.newLiteral(ctx,
+func (p *parserHelper) newLiteralBool(id int64, value bool) *exprpb.Expr {
+	return p.newLiteral(id,
 		&exprpb.Constant{ConstantKind: &exprpb.Constant_BoolValue{BoolValue: value}})
 }
 
-func (p *parserHelper) newLiteralString(ctx any, value string) *exprpb.Expr {
-	return p.newLiteral(ctx,
+func (p *parserHelper) newLiteralString(id int64, value string) *exprpb.Expr {
+	return p.newLiteral(id,
 		&exprpb.Constant{ConstantKind: &exprpb.Constant_StringValue{StringValue: value}})
 }
 
-func (p *parserHelper) newLiteralBytes(ctx any, value []byte) *exprpb.Expr {
-	return p.newLiteral(ctx,
+func (p *parserHelper) newLiteralBytes(id int64, value []byte) *exprpb.Expr {
+	return p.newLiteral(id,
 		&exprpb.Constant{ConstantKind: &exprpb.Constant_BytesValue{BytesValue: value}})
 }
 
-func (p *parserHelper) newLiteralInt(ctx any, value int64) *exprpb.Expr {
-	return p.newLiteral(ctx,
+func (p *parserHelper) newLiteralInt(id int64, value int64) *exprpb.Expr {
+	return p.newLiteral(id,
 		&exprpb.Constant{ConstantKind: &exprpb.Constant_Int64Value{Int64Value: value}})
 }
 
-func (p *parserHelper) newLiteralUint(ctx any, value uint64) *exprpb.Expr {
-	return p.newLiteral(ctx, &exprpb.Constant{ConstantKind: &exprpb.Constant_Uint64Value{Uint64Value: value}})
+func (p *parserHelper) newLiteralUint(id int64, value uint64) *exprpb.Expr {
+	return p.newLiteral(id, &exprpb.Constant{ConstantKind: &exprpb.Constant_Uint64Value{Uint64Value: value}})
 }
 
-func (p *parserHelper) newLiteralDouble(ctx any, value float64) *exprpb.Expr {
-	return p.newLiteral(ctx,
+func (p *parserHelper) newLiteralDouble(id int64, value float64) *exprpb.Expr {
+	return p.newLiteral(id,
 		&exprpb.Constant{ConstantKind: &exprpb.Constant_DoubleValue{DoubleValue: value}})
 }
 
-func (p *parserHelper) newIdent(ctx any, name string) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newIdent(id int64, name string) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_IdentExpr{IdentExpr: &exprpb.Expr_Ident{Name: name}}
 	return exprNode
 }
 
-func (p *parserHelper) newSelect(ctx any, operand *exprpb.Expr, field string) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newSelect(id int64, operand *exprpb.Expr, field string) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_SelectExpr{
 		SelectExpr: &exprpb.Expr_Select{Operand: operand, Field: field}}
 	return exprNode
 }
 
-func (p *parserHelper) newPresenceTest(ctx any, operand *exprpb.Expr, field string) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newPresenceTest(id int64, operand *exprpb.Expr, field string) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_SelectExpr{
 		SelectExpr: &exprpb.Expr_Select{Operand: operand, Field: field, TestOnly: true}}
 	return exprNode
 }
 
-func (p *parserHelper) newGlobalCall(ctx any, function string, args ...*exprpb.Expr) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newGlobalCall(id int64, function string, args ...*exprpb.Expr) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_CallExpr{
 		CallExpr: &exprpb.Expr_Call{Function: function, Args: args}}
 	return exprNode
 }
 
-func (p *parserHelper) newReceiverCall(ctx any, function string, target *exprpb.Expr, args ...*exprpb.Expr) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newReceiverCall(id int64, function string, target *exprpb.Expr, args ...*exprpb.Expr) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_CallExpr{
 		CallExpr: &exprpb.Expr_Call{Function: function, Target: target, Args: args}}
 	return exprNode
 }
 
-func (p *parserHelper) newList(ctx any, elements []*exprpb.Expr, optionals ...int32) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newList(id int64, elements []*exprpb.Expr, optionals ...int32) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_ListExpr{
 		ListExpr: &exprpb.Expr_CreateList{
 			Elements:        elements,
@@ -127,8 +123,8 @@ func (p *parserHelper) newList(ctx any, elements []*exprpb.Expr, optionals ...in
 	return exprNode
 }
 
-func (p *parserHelper) newMap(ctx any, entries ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newMap(id int64, entries ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_StructExpr{
 		StructExpr: &exprpb.Expr_CreateStruct{Entries: entries}}
 	return exprNode
@@ -143,8 +139,8 @@ func (p *parserHelper) newMapEntry(entryID int64, key *exprpb.Expr, value *exprp
 	}
 }
 
-func (p *parserHelper) newObject(ctx any, typeName string, entries ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+func (p *parserHelper) newObject(id int64, typeName string, entries ...*exprpb.Expr_CreateStruct_Entry) *exprpb.Expr {
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_StructExpr{
 		StructExpr: &exprpb.Expr_CreateStruct{
 			MessageName: typeName,
@@ -163,14 +159,14 @@ func (p *parserHelper) newObjectField(fieldID int64, field string, value *exprpb
 	}
 }
 
-func (p *parserHelper) newComprehension(ctx any, iterVar string,
+func (p *parserHelper) newComprehension(id int64, iterVar string,
 	iterRange *exprpb.Expr,
 	accuVar string,
 	accuInit *exprpb.Expr,
 	condition *exprpb.Expr,
 	step *exprpb.Expr,
 	result *exprpb.Expr) *exprpb.Expr {
-	exprNode := p.newExpr(ctx)
+	exprNode := p.newExpr(id)
 	exprNode.ExprKind = &exprpb.Expr_ComprehensionExpr{
 		ComprehensionExpr: &exprpb.Expr_Comprehension{
 			AccuVar:       accuVar,
@@ -183,33 +179,8 @@ func (p *parserHelper) newComprehension(ctx any, iterVar string,
 	return exprNode
 }
 
-func (p *parserHelper) newExpr(ctx any) *exprpb.Expr {
-	id, isID := ctx.(int64)
-	if isID {
-		return &exprpb.Expr{Id: id}
-	}
-	return &exprpb.Expr{Id: p.id(ctx)}
-}
-
-func (p *parserHelper) id(ctx any) int64 {
-	var location common.Location
-	switch c := ctx.(type) {
-	case antlr.ParserRuleContext:
-		token := c.GetStart()
-		location = p.source.NewLocation(token.GetLine(), token.GetColumn())
-	case antlr.Token:
-		token := c
-		location = p.source.NewLocation(token.GetLine(), token.GetColumn())
-	case common.Location:
-		location = c
-	default:
-		// This should only happen if the ctx is nil
-		return -1
-	}
-	id := p.nextID
-	p.positions[id], _ = p.source.LocationOffset(location)
-	p.nextID++
-	return id
+func (p *parserHelper) newExpr(id int64) *exprpb.Expr {
+	return &exprpb.Expr{Id: id}
 }
 
 func (p *parserHelper) getLocation(id int64) common.Location {
@@ -376,27 +347,34 @@ func (l *logicManager) balancedTree(lo, hi int) *exprpb.Expr {
 	return l.helper.newGlobalCall(l.ops[mid], l.function, left, right)
 }
 
+type idGenerator func() int64
+
 type exprHelper struct {
 	*parserHelper
-	id int64
+	nextID idGenerator
 }
 
 func (e *exprHelper) nextMacroID() int64 {
-	return e.parserHelper.id(e.parserHelper.getLocation(e.id))
+	return e.nextID()
 }
 
 // Copy implements the ExprHelper interface method by producing a copy of the input Expr value
 // with a fresh set of numeric identifiers the Expr and all its descendants.
 func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
-	copy := e.parserHelper.newExpr(e.parserHelper.getLocation(expr.GetId()))
+	copyID := e.nextID()
+	copyLoc := e.parserHelper.getLocation(expr.GetId())
+	if offset, valid := e.source.LocationOffset(copyLoc); valid {
+		e.parserHelper.positions[copyID] = offset
+	}
+	copyExpr := e.parserHelper.newExpr(copyID)
 	switch expr.GetExprKind().(type) {
 	case *exprpb.Expr_ConstExpr:
-		copy.ExprKind = &exprpb.Expr_ConstExpr{ConstExpr: expr.GetConstExpr()}
+		copyExpr.ExprKind = &exprpb.Expr_ConstExpr{ConstExpr: expr.GetConstExpr()}
 	case *exprpb.Expr_IdentExpr:
-		copy.ExprKind = &exprpb.Expr_IdentExpr{IdentExpr: expr.GetIdentExpr()}
+		copyExpr.ExprKind = &exprpb.Expr_IdentExpr{IdentExpr: expr.GetIdentExpr()}
 	case *exprpb.Expr_SelectExpr:
 		op := expr.GetSelectExpr().GetOperand()
-		copy.ExprKind = &exprpb.Expr_SelectExpr{SelectExpr: &exprpb.Expr_Select{
+		copyExpr.ExprKind = &exprpb.Expr_SelectExpr{SelectExpr: &exprpb.Expr_Select{
 			Operand:  e.Copy(op),
 			Field:    expr.GetSelectExpr().GetField(),
 			TestOnly: expr.GetSelectExpr().GetTestOnly(),
@@ -412,7 +390,7 @@ func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
 		for i, arg := range args {
 			argsCopy[i] = e.Copy(arg)
 		}
-		copy.ExprKind = &exprpb.Expr_CallExpr{
+		copyExpr.ExprKind = &exprpb.Expr_CallExpr{
 			CallExpr: &exprpb.Expr_Call{
 				Function: call.GetFunction(),
 				Target:   target,
@@ -425,7 +403,7 @@ func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
 		for i, elem := range elems {
 			elemsCopy[i] = e.Copy(elem)
 		}
-		copy.ExprKind = &exprpb.Expr_ListExpr{
+		copyExpr.ExprKind = &exprpb.Expr_ListExpr{
 			ListExpr: &exprpb.Expr_CreateList{Elements: elemsCopy},
 		}
 	case *exprpb.Expr_StructExpr:
@@ -447,7 +425,7 @@ func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
 			entryCopy.Value = e.Copy(entry.GetValue())
 			entriesCopy[i] = entryCopy
 		}
-		copy.ExprKind = &exprpb.Expr_StructExpr{
+		copyExpr.ExprKind = &exprpb.Expr_StructExpr{
 			StructExpr: &exprpb.Expr_CreateStruct{
 				MessageName: expr.GetStructExpr().GetMessageName(),
 				Entries:     entriesCopy,
@@ -459,7 +437,7 @@ func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
 		cond := e.Copy(expr.GetComprehensionExpr().GetLoopCondition())
 		step := e.Copy(expr.GetComprehensionExpr().GetLoopStep())
 		result := e.Copy(expr.GetComprehensionExpr().GetResult())
-		copy.ExprKind = &exprpb.Expr_ComprehensionExpr{
+		copyExpr.ExprKind = &exprpb.Expr_ComprehensionExpr{
 			ComprehensionExpr: &exprpb.Expr_Comprehension{
 				IterRange:     iterRange,
 				IterVar:       expr.GetComprehensionExpr().GetIterVar(),
@@ -471,7 +449,7 @@ func (e *exprHelper) Copy(expr *exprpb.Expr) *exprpb.Expr {
 			},
 		}
 	}
-	return copy
+	return copyExpr
 }
 
 // LiteralBool implements the ExprHelper interface method.

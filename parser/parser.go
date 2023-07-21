@@ -92,6 +92,7 @@ func (p *Parser) Parse(source common.Source) (*exprpb.ParsedExpr, *common.Errors
 	errs := common.NewErrors(source)
 	impl := parser{
 		errors:                           &parseErrors{errs},
+		source:                           source,
 		helper:                           newParserHelper(source),
 		macros:                           p.macros,
 		maxRecursionDepth:                p.maxRecursionDepth,
@@ -286,6 +287,8 @@ var _ antlr.ErrorStrategy = &recoveryLimitErrorStrategy{}
 
 type parser struct {
 	gen.BaseCELVisitor
+	id                               int64
+	source                           common.Source
 	errors                           *parseErrors
 	helper                           *parserHelper
 	macros                           map[string]Macro
@@ -459,7 +462,7 @@ func (p *parser) Visit(tree antlr.ParseTree) any {
 		}
 		return p.reportError(common.NoLocation, "unknown parse element encountered: %s", txt)
 	}
-	return p.helper.newExpr(common.NoLocation)
+	return p.errorExpr(common.NoLocation)
 
 }
 
@@ -474,7 +477,7 @@ func (p *parser) VisitExpr(ctx *gen.ExprContext) any {
 	if ctx.GetOp() == nil {
 		return result
 	}
-	opID := p.helper.id(ctx.GetOp())
+	opID := p.nextID(ctx.GetOp())
 	ifTrue := p.Visit(ctx.GetE1()).(*exprpb.Expr)
 	ifFalse := p.Visit(ctx.GetE2()).(*exprpb.Expr)
 	return p.globalCallOrMacro(opID, operators.Conditional, result, ifTrue, ifFalse)
@@ -490,7 +493,7 @@ func (p *parser) VisitConditionalOr(ctx *gen.ConditionalOrContext) any {
 			return p.reportError(ctx, "unexpected character, wanted '||'")
 		}
 		next := p.Visit(rest[i]).(*exprpb.Expr)
-		opID := p.helper.id(op)
+		opID := p.nextID(op)
 		l.addTerm(opID, next)
 	}
 	return l.toExpr()
@@ -506,7 +509,7 @@ func (p *parser) VisitConditionalAnd(ctx *gen.ConditionalAndContext) any {
 			return p.reportError(ctx, "unexpected character, wanted '&&'")
 		}
 		next := p.Visit(rest[i]).(*exprpb.Expr)
-		opID := p.helper.id(op)
+		opID := p.nextID(op)
 		l.addTerm(opID, next)
 	}
 	return l.toExpr()
@@ -520,7 +523,7 @@ func (p *parser) VisitRelation(ctx *gen.RelationContext) any {
 	}
 	if op, found := operators.Find(opText); found {
 		lhs := p.Visit(ctx.Relation(0)).(*exprpb.Expr)
-		opID := p.helper.id(ctx.GetOp())
+		opID := p.nextID(ctx.GetOp())
 		rhs := p.Visit(ctx.Relation(1)).(*exprpb.Expr)
 		return p.globalCallOrMacro(opID, op, lhs, rhs)
 	}
@@ -535,7 +538,7 @@ func (p *parser) VisitCalc(ctx *gen.CalcContext) any {
 	}
 	if op, found := operators.Find(opText); found {
 		lhs := p.Visit(ctx.Calc(0)).(*exprpb.Expr)
-		opID := p.helper.id(ctx.GetOp())
+		opID := p.nextID(ctx.GetOp())
 		rhs := p.Visit(ctx.Calc(1)).(*exprpb.Expr)
 		return p.globalCallOrMacro(opID, op, lhs, rhs)
 	}
@@ -543,7 +546,7 @@ func (p *parser) VisitCalc(ctx *gen.CalcContext) any {
 }
 
 func (p *parser) VisitUnary(ctx *gen.UnaryContext) any {
-	return p.helper.newLiteralString(ctx, "<<error>>")
+	return p.helper.newLiteralString(p.nextID(ctx), "<<error>>")
 }
 
 // Visit a parse tree produced by CELParser#LogicalNot.
@@ -551,7 +554,7 @@ func (p *parser) VisitLogicalNot(ctx *gen.LogicalNotContext) any {
 	if len(ctx.GetOps())%2 == 0 {
 		return p.Visit(ctx.Member())
 	}
-	opID := p.helper.id(ctx.GetOps()[0])
+	opID := p.nextID(ctx.GetOps()[0])
 	target := p.Visit(ctx.Member()).(*exprpb.Expr)
 	return p.globalCallOrMacro(opID, operators.LogicalNot, target)
 }
@@ -560,7 +563,7 @@ func (p *parser) VisitNegate(ctx *gen.NegateContext) any {
 	if len(ctx.GetOps())%2 == 0 {
 		return p.Visit(ctx.Member())
 	}
-	opID := p.helper.id(ctx.GetOps()[0])
+	opID := p.nextID(ctx.GetOps()[0])
 	target := p.Visit(ctx.Member()).(*exprpb.Expr)
 	return p.globalCallOrMacro(opID, operators.Negate, target)
 }
@@ -570,20 +573,21 @@ func (p *parser) VisitSelect(ctx *gen.SelectContext) any {
 	operand := p.Visit(ctx.Member()).(*exprpb.Expr)
 	// Handle the error case where no valid identifier is specified.
 	if ctx.GetId() == nil || ctx.GetOp() == nil {
-		return p.helper.newExpr(ctx)
+		return p.errorExpr(ctx)
 	}
 	id := ctx.GetId().GetText()
 	if ctx.GetOpt() != nil {
 		if !p.enableOptionalSyntax {
 			return p.reportError(ctx.GetOp(), "unsupported syntax '.?'")
 		}
+		field := p.helper.newLiteralString(p.nextID(ctx.GetId()), id)
 		return p.helper.newGlobalCall(
-			ctx.GetOp(),
+			p.nextID(ctx.GetOp()),
 			operators.OptSelect,
 			operand,
-			p.helper.newLiteralString(ctx.GetId(), id))
+			field)
 	}
-	return p.helper.newSelect(ctx.GetOp(), operand, id)
+	return p.helper.newSelect(p.nextID(ctx.GetOp()), operand, id)
 }
 
 // VisitMemberCall visits a parse tree produced by CELParser#MemberCall.
@@ -591,10 +595,10 @@ func (p *parser) VisitMemberCall(ctx *gen.MemberCallContext) any {
 	operand := p.Visit(ctx.Member()).(*exprpb.Expr)
 	// Handle the error case where no valid identifier is specified.
 	if ctx.GetId() == nil {
-		return p.helper.newExpr(ctx)
+		return p.errorExpr(ctx)
 	}
 	id := ctx.GetId().GetText()
-	opID := p.helper.id(ctx.GetOpen())
+	opID := p.nextID(ctx.GetOpen())
 	return p.receiverCallOrMacro(opID, id, operand, p.visitExprList(ctx.GetArgs())...)
 }
 
@@ -603,9 +607,9 @@ func (p *parser) VisitIndex(ctx *gen.IndexContext) any {
 	target := p.Visit(ctx.Member()).(*exprpb.Expr)
 	// Handle the error case where no valid identifier is specified.
 	if ctx.GetOp() == nil {
-		return p.helper.newExpr(ctx)
+		return p.errorExpr(ctx)
 	}
-	opID := p.helper.id(ctx.GetOp())
+	opID := p.nextID(ctx.GetOp())
 	index := p.Visit(ctx.GetIndex()).(*exprpb.Expr)
 	operator := operators.Index
 	if ctx.GetOpt() != nil {
@@ -629,7 +633,7 @@ func (p *parser) VisitCreateMessage(ctx *gen.CreateMessageContext) any {
 	if ctx.GetLeadingDot() != nil {
 		messageName = "." + messageName
 	}
-	objID := p.helper.id(ctx.GetOp())
+	objID := p.nextID(ctx.GetOp())
 	entries := p.VisitIFieldInitializerList(ctx.GetEntries()).([]*exprpb.Expr_CreateStruct_Entry)
 	return p.helper.newObject(objID, messageName, entries...)
 }
@@ -649,7 +653,7 @@ func (p *parser) VisitIFieldInitializerList(ctx gen.IFieldInitializerListContext
 			// This is the result of a syntax error detected elsewhere.
 			return []*exprpb.Expr_CreateStruct_Entry{}
 		}
-		initID := p.helper.id(cols[i])
+		initID := p.nextID(cols[i])
 		optField := f.(*gen.OptFieldContext)
 		optional := optField.GetOpt() != nil
 		if !p.enableOptionalSyntax && optional {
@@ -677,7 +681,7 @@ func (p *parser) VisitIdentOrGlobalCall(ctx *gen.IdentOrGlobalCallContext) any {
 	}
 	// Handle the error case where no valid identifier is specified.
 	if ctx.GetId() == nil {
-		return p.helper.newExpr(ctx)
+		return p.errorExpr(ctx)
 	}
 	// Handle reserved identifiers.
 	id := ctx.GetId().GetText()
@@ -686,22 +690,22 @@ func (p *parser) VisitIdentOrGlobalCall(ctx *gen.IdentOrGlobalCallContext) any {
 	}
 	identName += id
 	if ctx.GetOp() != nil {
-		opID := p.helper.id(ctx.GetOp())
+		opID := p.nextID(ctx.GetOp())
 		return p.globalCallOrMacro(opID, identName, p.visitExprList(ctx.GetArgs())...)
 	}
-	return p.helper.newIdent(ctx.GetId(), identName)
+	return p.helper.newIdent(p.nextID(ctx.GetId()), identName)
 }
 
 // Visit a parse tree produced by CELParser#CreateList.
 func (p *parser) VisitCreateList(ctx *gen.CreateListContext) any {
-	listID := p.helper.id(ctx.GetOp())
+	listID := p.nextID(ctx.GetOp())
 	elems, optionals := p.visitListInit(ctx.GetElems())
 	return p.helper.newList(listID, elems, optionals...)
 }
 
 // Visit a parse tree produced by CELParser#CreateStruct.
 func (p *parser) VisitCreateStruct(ctx *gen.CreateStructContext) any {
-	structID := p.helper.id(ctx.GetOp())
+	structID := p.nextID(ctx.GetOp())
 	entries := []*exprpb.Expr_CreateStruct_Entry{}
 	if ctx.GetEntries() != nil {
 		entries = p.Visit(ctx.GetEntries()).([]*exprpb.Expr_CreateStruct_Entry)
@@ -720,7 +724,7 @@ func (p *parser) VisitMapInitializerList(ctx *gen.MapInitializerListContext) any
 	keys := ctx.GetKeys()
 	vals := ctx.GetValues()
 	for i, col := range ctx.GetCols() {
-		colID := p.helper.id(col)
+		colID := p.nextID(col)
 		if i >= len(keys) || i >= len(vals) {
 			// This is the result of a syntax error detected elsewhere.
 			return []*exprpb.Expr_CreateStruct_Entry{}
@@ -754,7 +758,7 @@ func (p *parser) VisitInt(ctx *gen.IntContext) any {
 	if err != nil {
 		return p.reportError(ctx, "invalid int literal")
 	}
-	return p.helper.newLiteralInt(ctx, i)
+	return p.helper.newLiteralInt(p.nextID(ctx), i)
 }
 
 // Visit a parse tree produced by CELParser#Uint.
@@ -771,7 +775,7 @@ func (p *parser) VisitUint(ctx *gen.UintContext) any {
 	if err != nil {
 		return p.reportError(ctx, "invalid uint literal")
 	}
-	return p.helper.newLiteralUint(ctx, i)
+	return p.helper.newLiteralUint(p.nextID(ctx), i)
 }
 
 // Visit a parse tree produced by CELParser#Double.
@@ -784,35 +788,35 @@ func (p *parser) VisitDouble(ctx *gen.DoubleContext) any {
 	if err != nil {
 		return p.reportError(ctx, "invalid double literal")
 	}
-	return p.helper.newLiteralDouble(ctx, f)
+	return p.helper.newLiteralDouble(p.nextID(ctx), f)
 
 }
 
 // Visit a parse tree produced by CELParser#String.
 func (p *parser) VisitString(ctx *gen.StringContext) any {
 	s := p.unquote(ctx, ctx.GetText(), false)
-	return p.helper.newLiteralString(ctx, s)
+	return p.helper.newLiteralString(p.nextID(ctx), s)
 }
 
 // Visit a parse tree produced by CELParser#Bytes.
 func (p *parser) VisitBytes(ctx *gen.BytesContext) any {
 	b := []byte(p.unquote(ctx, ctx.GetTok().GetText()[1:], true))
-	return p.helper.newLiteralBytes(ctx, b)
+	return p.helper.newLiteralBytes(p.nextID(ctx), b)
 }
 
 // Visit a parse tree produced by CELParser#BoolTrue.
 func (p *parser) VisitBoolTrue(ctx *gen.BoolTrueContext) any {
-	return p.helper.newLiteralBool(ctx, true)
+	return p.helper.newLiteralBool(p.nextID(ctx), true)
 }
 
 // Visit a parse tree produced by CELParser#BoolFalse.
 func (p *parser) VisitBoolFalse(ctx *gen.BoolFalseContext) any {
-	return p.helper.newLiteralBool(ctx, false)
+	return p.helper.newLiteralBool(p.nextID(ctx), false)
 }
 
 // Visit a parse tree produced by CELParser#Null.
 func (p *parser) VisitNull(ctx *gen.NullContext) any {
-	return p.helper.newLiteral(ctx,
+	return p.helper.newLiteral(p.nextID(ctx),
 		&exprpb.Constant{
 			ConstantKind: &exprpb.Constant_NullValue{
 				NullValue: structpb.NullValue_NULL_VALUE}})
@@ -879,7 +883,7 @@ func (p *parser) newLogicManager(function string, term *exprpb.Expr) *logicManag
 
 func (p *parser) reportError(ctx any, format string, args ...any) *exprpb.Expr {
 	var location common.Location
-	err := p.helper.newExpr(ctx)
+	err := p.errorExpr(ctx)
 	switch c := ctx.(type) {
 	case common.Location:
 		location = c
@@ -946,17 +950,22 @@ func (p *parser) expandMacro(exprID int64, function string, target *exprpb.Expr,
 			return nil, false
 		}
 	}
+	macroLoc := p.helper.getLocation(exprID)
 	eh := exprHelperPool.Get().(*exprHelper)
 	defer exprHelperPool.Put(eh)
 	eh.parserHelper = p.helper
-	eh.id = exprID
+	eh.nextID = func() int64 {
+		p.id++
+		p.recordLocation(p.id, p.location(macroLoc))
+		return p.id
+	}
 	expr, err := macro.Expander()(eh, target, args)
 	// An error indicates that the macro was matched, but the arguments were not well-formed.
 	if err != nil {
 		if err.Location != nil {
 			return p.reportError(err.Location, err.Message), true
 		}
-		return p.reportError(p.helper.getLocation(exprID), err.Message), true
+		return p.reportError(macroLoc, err.Message), true
 	}
 	// A nil value from the macro indicates that the macro implementation decided that
 	// an expansion should not be performed.
@@ -967,6 +976,38 @@ func (p *parser) expandMacro(exprID int64, function string, target *exprpb.Expr,
 		p.helper.addMacroCall(expr.GetId(), function, target, args...)
 	}
 	return expr, true
+}
+
+func (p *parser) nextID(ctx any) int64 {
+	p.id++
+	p.recordLocation(p.id, p.location(ctx))
+	return p.id
+}
+
+func (p *parser) location(ctx any) common.Location {
+	switch c := ctx.(type) {
+	case antlr.ParserRuleContext:
+		token := c.GetStart()
+		return p.source.NewLocation(token.GetLine(), token.GetColumn())
+	case antlr.Token:
+		token := c
+		return p.source.NewLocation(token.GetLine(), token.GetColumn())
+	case common.Location:
+		return c
+	default:
+		// This should only happen if the ctx is nil
+		return common.NoLocation
+	}
+}
+
+func (p *parser) recordLocation(id int64, loc common.Location) {
+	if offset, valid := p.source.LocationOffset(loc); valid {
+		p.helper.positions[id] = offset
+	}
+}
+
+func (p *parser) errorExpr(ctx any) *exprpb.Expr {
+	return &exprpb.Expr{Id: p.nextID(ctx)}
 }
 
 func (p *parser) checkAndIncrementRecursionDepth() {
