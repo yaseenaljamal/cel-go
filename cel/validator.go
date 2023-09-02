@@ -220,7 +220,7 @@ func (v formatValidator) Validate(e *Env, _ ValidatorConfig, a *ast.AST, iss *Is
 }
 
 func evalCall(env *Env, call, arg ast.Expr) error {
-	ast := &Ast{impl: ast.NewAST(call, ast.NewSourceInfo(nil))}
+	ast := &Ast{AST: ast.NewAST(call, ast.NewSourceInfo(nil))}
 	prg, err := env.Program(ast)
 	if err != nil {
 		return err

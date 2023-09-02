@@ -254,7 +254,7 @@ func newProgram(e *Env, a *Ast, opts []ProgramOption) (Program, error) {
 
 func (p *prog) initInterpretable(a *Ast, decs []interpreter.InterpretableDecorator) (*prog, error) {
 	// When the AST has been exprAST it contains metadata that can be used to speed up program execution.
-	interpretable, err := p.interpreter.NewInterpretable(a.impl, decs...)
+	interpretable, err := p.interpreter.NewInterpretable(a.AST, decs...)
 	if err != nil {
 		return nil, err
 	}

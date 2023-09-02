@@ -39,7 +39,7 @@ type Source = common.Source
 // source position information.
 type Ast struct {
 	source Source
-	impl   *celast.AST
+	*celast.AST
 }
 
 // NativeRep converts the AST to a Go-native representation.
@@ -55,7 +55,7 @@ func (ast *Ast) Expr() *exprpb.Expr {
 	if ast == nil {
 		return nil
 	}
-	pbExpr, _ := celast.ExprToProto(ast.impl.Expr())
+	pbExpr, _ := celast.ExprToProto(ast.AST.Expr())
 	return pbExpr
 }
 
@@ -64,7 +64,7 @@ func (ast *Ast) IsChecked() bool {
 	if ast == nil {
 		return false
 	}
-	return ast.impl.IsChecked()
+	return ast.AST.IsChecked()
 }
 
 // SourceInfo returns character offset and newline position information about expression elements.
@@ -72,7 +72,7 @@ func (ast *Ast) SourceInfo() *exprpb.SourceInfo {
 	if ast == nil {
 		return nil
 	}
-	pbInfo, _ := celast.SourceInfoToProto(ast.impl.SourceInfo())
+	pbInfo, _ := celast.SourceInfoToProto(ast.AST.SourceInfo())
 	return pbInfo
 }
 
@@ -95,7 +95,7 @@ func (ast *Ast) OutputType() *Type {
 	if ast == nil {
 		return types.ErrorType
 	}
-	return ast.impl.GetType(ast.impl.Expr().ID())
+	return ast.GetType(ast.AST.Expr().ID())
 }
 
 // Source returns a view of the input used to create the Ast. This source may be complete or
@@ -218,18 +218,18 @@ func (e *Env) Check(ast *Ast) (*Ast, *Issues) {
 	if err != nil {
 		errs := common.NewErrors(ast.Source())
 		errs.ReportError(common.NoLocation, err.Error())
-		return nil, NewIssuesWithSourceInfo(errs, ast.impl.SourceInfo())
+		return nil, NewIssuesWithSourceInfo(errs, ast.AST.SourceInfo())
 	}
 
-	checked, errs := checker.Check(ast.impl, ast.Source(), chk)
+	checked, errs := checker.Check(ast.AST, ast.Source(), chk)
 	if len(errs.GetErrors()) > 0 {
-		return nil, NewIssuesWithSourceInfo(errs, ast.impl.SourceInfo())
+		return nil, NewIssuesWithSourceInfo(errs, ast.AST.SourceInfo())
 	}
 	// Manually create the Ast to ensure that the Ast source information (which may be more
 	// detailed than the information provided by Check), is returned to the caller.
 	ast = &Ast{
 		source: ast.Source(),
-		impl:   checked}
+		AST:    checked}
 
 	// Avoid creating a validator config if it's not needed.
 	if len(e.validators) == 0 {
@@ -244,7 +244,7 @@ func (e *Env) Check(ast *Ast) (*Ast, *Issues) {
 		}
 	}
 	// Apply additional validators on the type-checked result.
-	iss := NewIssuesWithSourceInfo(errs, ast.impl.SourceInfo())
+	iss := NewIssuesWithSourceInfo(errs, ast.AST.SourceInfo())
 	for _, v := range e.validators {
 		v.Validate(e, vConfig, checked, iss)
 	}
@@ -447,7 +447,7 @@ func (e *Env) ParseSource(src Source) (*Ast, *Issues) {
 	if len(errs.GetErrors()) > 0 {
 		return nil, &Issues{errs: errs}
 	}
-	return &Ast{source: src, impl: parsed}, nil
+	return &Ast{source: src, AST: parsed}, nil
 }
 
 // Program generates an evaluable instance of the Ast within the environment (Env).
@@ -543,8 +543,8 @@ func (e *Env) PartialVars(vars any) (interpreter.PartialActivation, error) {
 // TODO: Consider adding an option to generate a Program.Residual to avoid round-tripping to an
 // Ast format and then Program again.
 func (e *Env) ResidualAst(a *Ast, details *EvalDetails) (*Ast, error) {
-	pruned := interpreter.PruneAst(a.impl.Expr(), a.impl.SourceInfo().MacroCalls(), details.State())
-	newAST := &Ast{source: a.Source(), impl: pruned}
+	pruned := interpreter.PruneAst(a.AST.Expr(), a.AST.SourceInfo().MacroCalls(), details.State())
+	newAST := &Ast{source: a.Source(), AST: pruned}
 	expr, err := AstToString(newAST)
 	if err != nil {
 		return nil, err

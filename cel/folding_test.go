@@ -650,11 +650,11 @@ func TestConstantFoldingNormalizeIDs(t *testing.T) {
 				t.Fatalf("Compile() failed: %v", iss.Err())
 			}
 			preOpt := newIDCollector()
-			ast.PostOrderVisit(checked.impl.Expr(), preOpt)
+			ast.PostOrderVisit(checked.AST.Expr(), preOpt)
 			if !reflect.DeepEqual(preOpt.IDs(), tc.ids) {
 				t.Errorf("Compile() got ids %v, expected %v", preOpt.IDs(), tc.ids)
 			}
-			for id, call := range checked.impl.SourceInfo().MacroCalls() {
+			for id, call := range checked.AST.SourceInfo().MacroCalls() {
 				macroText, found := tc.macros[id]
 				if !found {
 					t.Fatalf("Compile() did not find macro %d", id)
@@ -682,11 +682,11 @@ func TestConstantFoldingNormalizeIDs(t *testing.T) {
 				t.Fatalf("Optimize() generated an invalid AST: %v", iss.Err())
 			}
 			postOpt := newIDCollector()
-			ast.PostOrderVisit(optimized.impl.Expr(), postOpt)
+			ast.PostOrderVisit(optimized.AST.Expr(), postOpt)
 			if !reflect.DeepEqual(postOpt.IDs(), tc.normalizedIDs) {
 				t.Errorf("Optimize() got ids %v, expected %v", postOpt.IDs(), tc.normalizedIDs)
 			}
-			for id, call := range optimized.impl.SourceInfo().MacroCalls() {
+			for id, call := range optimized.AST.SourceInfo().MacroCalls() {
 				macroText, found := tc.normalizedMacros[id]
 				if !found {
 					t.Fatalf("Optimize() did not find macro %d", id)

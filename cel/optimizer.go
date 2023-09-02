@@ -84,13 +84,13 @@ func (opt *StaticOptimizer) Optimize(env *Env, a *Ast) (*Ast, *Issues) {
 		if iss.Err() != nil {
 			return nil, iss
 		}
-		optimized = checked.impl
+		optimized = checked.AST
 	}
 
 	// Return the optimized result.
 	return &Ast{
 		source: a.Source(),
-		impl:   optimized,
+		AST:    optimized,
 	}, nil
 }
 

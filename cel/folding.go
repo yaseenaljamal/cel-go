@@ -124,7 +124,7 @@ func (opt *constantFoldingOptimizer) Optimize(ctx *OptimizerContext, a *ast.AST)
 func tryFold(ctx *OptimizerContext, a *ast.AST, expr ast.Expr) error {
 	// Assume all context is needed to evaluate the expression.
 	subAST := &Ast{
-		impl: ast.NewCheckedAST(ast.NewAST(expr, a.SourceInfo()), a.TypeMap(), a.ReferenceMap()),
+		AST: ast.NewCheckedAST(ast.NewAST(expr, a.SourceInfo()), a.TypeMap(), a.ReferenceMap()),
 	}
 	prg, err := ctx.Program(subAST)
 	if err != nil {
