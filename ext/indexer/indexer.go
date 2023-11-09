@@ -53,7 +53,7 @@ func (idxr *indexer) GenerateIndex(env *cel.Env, a *cel.Ast) (*IndexedAST, error
 		return nil, err
 	}
 
-	presenceFields := idxr.findFrequentPresenceFields(a.AST)
+	presenceFields := idxr.findFrequentPresenceFields(a.NativeRep())
 	if len(presenceFields) == 0 {
 		return &IndexedAST{
 			fields:        []*fieldFrequency{},

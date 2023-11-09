@@ -17,6 +17,7 @@ package indexer
 import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/interpreter"
 )
 
 type IndexedProgram struct {
@@ -25,4 +26,8 @@ type IndexedProgram struct {
 
 func (prg *IndexedProgram) Eval(vars any) (ref.Val, *cel.EvalDetails, error) {
 	return nil, nil, nil
+}
+
+func (prg *IndexedProgram) calculateMask(vars interpreter.Activation) uint8 {
+	return 0
 }
