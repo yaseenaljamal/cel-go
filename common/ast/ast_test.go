@@ -322,6 +322,19 @@ func TestNewSourceInfoRelative(t *testing.T) {
 	}
 }
 
+func TestMaxID(t *testing.T) {
+	checked := mustTypeCheck(t, `has({'a':'key'}.key)`)
+	maxID := ast.MaxID(checked)
+	checked.SourceInfo().SetMacroCall(
+		maxID+2,
+		ast.NewExprFactory().NewIdent(maxID+1, "dummy"))
+	// Max ID always pads by 1 between invocations, and it's called twice here
+	// due to the presence of the macro which was injected after the fact.
+	if ast.MaxID(checked) != maxID+4 {
+		t.Errorf("ast.MaxID() got %v, wanted %d", ast.MaxID(checked), maxID+4)
+	}
+}
+
 func mockRelativeSource(t testing.TB, text string, lineOffsets []int32, baseLocation common.Location) common.Source {
 	t.Helper()
 	return &mockSource{
