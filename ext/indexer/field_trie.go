@@ -59,6 +59,20 @@ func (t *fieldTrie) fieldName() string {
 	return op + "." + t.fieldSegment
 }
 
+func (t *fieldTrie) fieldPath() []string {
+	if t.fieldSegment == "" {
+		return []string{}
+	}
+	if t.parent == nil {
+		return []string{t.fieldSegment}
+	}
+	op := t.parent.fieldPath()
+	if len(op) == 0 {
+		return []string{t.fieldSegment}
+	}
+	return append(op, t.fieldSegment)
+}
+
 func (t *fieldTrie) sortedPresenceFields() []*fieldFrequency {
 	fq := make(fieldFrequencyQueue, 0, len(t.children))
 	for _, child := range t.children {
@@ -67,6 +81,7 @@ func (t *fieldTrie) sortedPresenceFields() []*fieldFrequency {
 				id:        child.id,
 				parentID:  t.id,
 				field:     child.fieldName(),
+				fieldPath: child.fieldPath(),
 				frequency: child.frequency,
 			})
 		}
@@ -94,17 +109,18 @@ func (t *fieldTrie) newChild(fieldSegment string) *fieldTrie {
 
 type fieldFrequency struct {
 	id        int64
-	parentID  int64
 	field     string
+	fieldPath []string
+	parentID  int64
 	frequency int
 }
 
-func (ff *fieldFrequency) fieldName() string {
+func (ff *fieldFrequency) FieldName() string {
 	return ff.field
 }
 
-func (ff *fieldFrequency) fieldPath() []string {
-	return []string{ff.field}
+func (ff *fieldFrequency) FieldPath() []string {
+	return ff.fieldPath
 }
 
 type fieldFrequencyQueue []*fieldFrequency

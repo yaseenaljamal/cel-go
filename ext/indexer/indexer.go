@@ -17,48 +17,47 @@ package indexer
 import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/ast"
+	"github.com/google/cel-go/common/containers"
 	"github.com/google/cel-go/common/types"
 )
 
 const (
-	maxFieldPatterns = 4
+	maxFieldPatterns = 3
 )
 
 type indexer struct{}
 
-// IndexedAST
+// IndexedAST records the field index metadata, bit mask information, and AST set associated
+// with the index.
 type IndexedAST struct {
-	// fields provides a list of presence fields sorted in descending frequency,
+	// Fields provides a list of presence fields sorted in descending frequency,
 	// or if tied by ascending id.
-	fields []*fieldFrequency
+	Fields []*fieldFrequency
 
 	// maskToASTSLot contains a set of possible valid bit masks corresponding to ASTs
 	// where the mask assembled in reverse order to frequency. i.e. the highest frequency
 	// field presence is encoded in the lowest bit, and the lowest frequency field presence
 	// is encoded in the highest bit.
-	maskToASTSlot map[uint8]int
+	MaskToASTSlot map[uint8]int
 
-	// asts contains a list of indexed ASTs which the code has attempted to prune down to
+	// ASTs contains a list of indexed ASTs which the code has attempted to prune down to
 	// the minimal set by determining field presence dependencies.
-	asts []*cel.Ast
+	ASTs []*cel.Ast
 }
 
+// NewIndexer creates an indexer instance.
 func NewIndexer() *indexer {
 	return &indexer{}
 }
 
+// GenerateIndex computes a set of indices from a CEL environment and an AST.
 func (idxr *indexer) GenerateIndex(env *cel.Env, a *cel.Ast) (*IndexedAST, error) {
-	folder, err := cel.NewConstantFoldingOptimizer()
-	if err != nil {
-		return nil, err
-	}
-
 	presenceFields := idxr.findFrequentPresenceFields(a.NativeRep())
 	if len(presenceFields) == 0 {
 		return &IndexedAST{
-			fields:        []*fieldFrequency{},
-			maskToASTSlot: map[uint8]int{0: 0},
-			asts:          []*cel.Ast{a},
+			Fields:        []*fieldFrequency{},
+			MaskToASTSlot: map[uint8]int{0: 0},
+			ASTs:          []*cel.Ast{a},
 		}, nil
 	}
 	maskCount := 1 << len(presenceFields)
@@ -67,10 +66,15 @@ func (idxr *indexer) GenerateIndex(env *cel.Env, a *cel.Ast) (*IndexedAST, error
 	for i := 0; i < maskCount; i++ {
 		mask := uint8(i)
 		effectiveMask := idxr.computeEffectiveMask(mask, presenceFields)
-		if _, found := maskToASTSlot[effectiveMask]; found {
+		if idx, found := maskToASTSlot[effectiveMask]; found {
+			maskToASTSlot[mask] = idx
 			continue
 		}
 		pr := newPresenceRewriter(mask, presenceFields)
+		folder, err := cel.NewConstantFoldingOptimizer()
+		if err != nil {
+			return nil, err
+		}
 		opt := cel.NewStaticOptimizer(pr, folder)
 		indexed, iss := opt.Optimize(env, a)
 		if iss.Err() != nil {
@@ -80,15 +84,15 @@ func (idxr *indexer) GenerateIndex(env *cel.Env, a *cel.Ast) (*IndexedAST, error
 		maskToASTSlot[mask] = len(indexedASTs) - 1
 	}
 	return &IndexedAST{
-		fields:        presenceFields,
-		maskToASTSlot: maskToASTSlot,
-		asts:          indexedASTs,
+		Fields:        presenceFields,
+		MaskToASTSlot: maskToASTSlot,
+		ASTs:          indexedASTs,
 	}, nil
 }
 
 func (idxr *indexer) findFrequentPresenceFields(a *ast.AST) []*fieldFrequency {
 	root := ast.NavigateAST(a)
-	presenceTests := ast.MatchDescendants(root, presenceTestMatcher)
+	presenceTests := ast.MatchDescendants(root, allPresenceTestsMatcher)
 	ft := newFieldTrie()
 	for _, pt := range presenceTests {
 		f := qualifiedFieldName(pt.AsSelect())
@@ -127,12 +131,12 @@ func (idxr *indexer) computeEffectiveMask(mask uint8, presenceTests []*fieldFreq
 }
 
 func newPresenceRewriter(mask uint8, presenceTests []*fieldFrequency) *presenceRewriter {
-	updates := make(map[int64]types.Bool, len(presenceTests))
+	updates := make(map[string]types.Bool, len(presenceTests))
 	for i, pt := range presenceTests {
 		bit := uint8(1 << i)
-		updates[pt.id] = types.False
+		updates[pt.FieldName()] = types.False
 		if mask&bit == bit {
-			updates[pt.id] = types.True
+			updates[pt.FieldName()] = types.True
 		}
 	}
 	return &presenceRewriter{
@@ -141,22 +145,45 @@ func newPresenceRewriter(mask uint8, presenceTests []*fieldFrequency) *presenceR
 }
 
 type presenceRewriter struct {
-	updates map[int64]types.Bool
+	updates map[string]types.Bool
 }
 
 func (pr *presenceRewriter) Optimize(ctx *cel.OptimizerContext, a *ast.AST) *ast.AST {
 	root := ast.NavigateAST(a)
-	matches := ast.MatchDescendants(root, func(e ast.NavigableExpr) bool {
-		_, found := pr.updates[e.ID()]
-		return found
-	})
-	for _, match := range matches {
-		match.SetKindCase(ctx.NewLiteral(pr.updates[match.ID()]))
+	for presenceTest, val := range pr.updates {
+		matches := ast.MatchDescendants(root, exactPresenceTestMatcher(presenceTest))
+		for _, match := range matches {
+			matchID := match.ID()
+			ctx.UpdateExpr(match, ctx.NewLiteral(val))
+			a.SourceInfo().ClearMacroCall(matchID)
+		}
 	}
 	return a
 }
 
-func presenceTestMatcher(e ast.NavigableExpr) bool {
+// exactPresenceTestMatcher matches simple identifiers, select expressions, and presence test
+// expressions which match the (potentially) qualified variable name provided as input.
+//
+// Note, this function does not support inlining against select expressions which includes optional
+// field selection. This may be a future refinement.
+func exactPresenceTestMatcher(varName string) ast.ExprMatcher {
+	return func(e ast.NavigableExpr) bool {
+		if e.Kind() != ast.SelectKind {
+			return false
+		}
+		sel := e.AsSelect()
+		if !sel.IsTestOnly() {
+			return false
+		}
+		// While the `ToQualifiedName` call could take the select directly, this
+		// would skip presence tests from possible matches, which we would like
+		// to include.
+		qualName, found := containers.ToQualifiedName(sel.Operand())
+		return found && qualName+"."+sel.FieldName() == varName
+	}
+}
+
+func allPresenceTestsMatcher(e ast.NavigableExpr) bool {
 	switch e.Kind() {
 	case ast.SelectKind:
 		sel := e.AsSelect()

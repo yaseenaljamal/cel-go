@@ -489,6 +489,16 @@ func (e *Env) TypeProvider() ref.TypeProvider {
 	return &interopLegacyTypeProvider{Provider: e.provider}
 }
 
+// FindVariable returns the variable declaration for the given variable name, if present.
+func (e *Env) FindVariable(name string) (*decls.VariableDecl, bool) {
+	for _, v := range e.variables {
+		if v.Name() == name {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
 // UnknownVars returns an interpreter.PartialActivation which marks all variables declared in the
 // Env as unknown AttributePattern values.
 //

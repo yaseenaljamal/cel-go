@@ -77,8 +77,17 @@ func TestGenerateIndex(t *testing.T) {
 			// note, slots 2 and 6 are dropped out since ...
 			// 2 (010) implies a.b is not present, but a.b.c is present
 			// 6 (110) implies the same as 4 (100) which has the same implication as 2
-			maskToSlot: map[uint8]int{0: 0, 1: 1, 3: 2, 4: 3, 5: 4, 7: 5},
-			idxASTs:    []string{`b.c`, `b.c`, `a.b.c`, `c.d`, `c.d`, `a.b.c`},
+			maskToSlot: map[uint8]int{
+				0: 0,
+				1: 1,
+				2: 0,
+				3: 2,
+				4: 3,
+				5: 4,
+				6: 3,
+				7: 5,
+			},
+			idxASTs: []string{`b.c`, `b.c`, `a.b.c`, `c.d`, `c.d`, `a.b.c`},
 		},
 	}
 
@@ -103,12 +112,12 @@ func TestGenerateIndex(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateIndex() failed: %v", err)
 			}
-			idxFields := make(map[string]int, len(idx.fields))
-			for _, f := range idx.fields {
+			idxFields := make(map[string]int, len(idx.Fields))
+			for _, f := range idx.Fields {
 				idxFields[f.field] = f.frequency
 			}
-			idxASTs := make([]string, 0, len(idx.asts))
-			for _, a := range idx.asts {
+			idxASTs := make([]string, 0, len(idx.ASTs))
+			for _, a := range idx.ASTs {
 				strAST, err := cel.AstToString(a)
 				if err != nil {
 					t.Fatalf("cel.AstToString(%v) failed: %v", a, err)
@@ -121,8 +130,8 @@ func TestGenerateIndex(t *testing.T) {
 			if !reflect.DeepEqual(tc.idxASTs, idxASTs) {
 				t.Errorf("index asts got %v, wanted %v", idxASTs, tc.idxASTs)
 			}
-			if !reflect.DeepEqual(tc.maskToSlot, idx.maskToASTSlot) {
-				t.Errorf("index mask to ast slot got %v, wanted %v", idx.maskToASTSlot, tc.maskToSlot)
+			if !reflect.DeepEqual(tc.maskToSlot, idx.MaskToASTSlot) {
+				t.Errorf("index mask to ast slot got %v, wanted %v", idx.MaskToASTSlot, tc.maskToSlot)
 			}
 		})
 	}
