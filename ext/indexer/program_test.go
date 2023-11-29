@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/pb"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/test/proto3pb"
 )
@@ -173,6 +174,27 @@ func BenchmarkIndexedProgramEval(b *testing.B) {
 				})
 			}
 		})
+	}
+}
+
+func BenchmarkMaskResolution(b *testing.B) {
+	pbdb := pb.NewDb()
+	pbdb.RegisterMessage(&proto3pb.TestAllTypes{})
+	pbdb.RegisterMessage(&proto3pb.NestedTestAllTypes{})
+	// testAllDesc, _ := pbdb.DescribeType("google.expr.proto3.test.TestAllTypes")
+	nestedDesc, _ := pbdb.DescribeType("google.expr.proto3.test.NestedTestAllTypes")
+	childFD, _ := nestedDesc.FieldByName("child")
+	// payloadFD, _ := nestedDesc.FieldByName("payload")
+	// mapStrStrFD, _ := testAllDesc.FieldByName("map_string_string")
+	msg := &proto3pb.NestedTestAllTypes{}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		childFD.IsSet(msg)
+		child, _ := childFD.GetFrom(msg)
+		childFD.IsSet(child)
+		childFD.GetFrom(child)
 	}
 }
 
