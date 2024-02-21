@@ -1,11 +1,13 @@
 package cel
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/containers"
 	"github.com/google/cel-go/common/types"
+	"google.golang.org/protobuf/encoding/prototext"
 )
 
 type attrEntry struct {
@@ -78,62 +80,75 @@ func TestSimpleCse(t *testing.T) {
 			Overload("lookupConsents_list", []*Type{ListType(IntType)}, ListType(IntType)),
 		),
 	)
-	attrNodeMap := make(map[string]attrNode, len(attrGraphNodes))
+	nextID := int64(1)
+	idGen := func(int64) int64 {
+		nextID++
+		return nextID
+	}
+	attrNodeMap := make(map[string]*attrNode, len(attrGraphNodes))
 	for _, n := range attrGraphNodes {
-		attrNodeMap[n.simpleName] = attrNode{
+		attrAST := testCseCompile(t, e, n.expr)
+		attrAST.Expr().RenumberIDs(idGen)
+		attrNodeMap[n.simpleName] = &attrNode{
 			attrEntry: n,
-			attrAST:   testCseCompile(t, e, n.expr),
+			attrAST:   attrAST,
 		}
 	}
 
 	seq := &attrSequence{
 		nodeMap: attrNodeMap,
-		ordered: []attrNode{},
+		ordered: []*attrNode{},
+		idGen:   idGen,
 	}
 	sequenceNodes(attrNodeMap["root"], attrNodeMap, seq)
-	mergedPB, err := ast.ToProto(seq.toAST())
+	mergedPB, err := ast.ExprToProto(seq.toExpr())
 	if err != nil {
 		t.Fatalf("ast.ToProto() failed: %v", err)
 	}
-	t.Error(mergedPB)
+	t.Error(prototext.Format(mergedPB))
 }
 
 type attrSequence struct {
-	nodeMap map[string]attrNode
-	ordered []attrNode
+	nodeMap map[string]*attrNode
+	ordered []*attrNode
+	idGen   func(int64) int64
 }
 
-func (seq *attrSequence) add(node attrNode) {
+func (seq *attrSequence) add(node *attrNode) {
 	// reverse ordered nodes, such that root expression is inner-most when rendered to an AST
-	seq.ordered = append([]attrNode{node}, seq.ordered...)
+	seq.ordered = append([]*attrNode{node}, seq.ordered...)
 }
 
-func (seq *attrSequence) toAST() *ast.AST {
+func (seq *attrSequence) toExpr() ast.Expr {
 	fac := ast.NewExprFactory()
-	var currAST *ast.AST
+	var currExpr ast.Expr
 	for _, node := range seq.ordered {
 		nodeExpr := ast.NavigateAST(node.attrAST)
 		for _, input := range node.inputs {
 			inputNode := seq.nodeMap[input]
 			matches := ast.MatchDescendants(nodeExpr, matchFullName(inputNode.fullName))
 			for _, m := range matches {
-				m.SetKindCase(fac.NewIdent(0, inputNode.simpleName))
+				m.SetKindCase(fac.NewIdent(seq.nextID(), inputNode.simpleName))
 			}
 		}
-		if currAST == nil {
-			currAST = node.attrAST
+		if currExpr == nil {
+			currExpr = fac.CopyExpr(node.attrAST.Expr())
 			continue
 		}
-		fac.NewComprehension(0,
-			fac.NewList(0, []ast.Expr{}, []int32{}),
+		currExpr = fac.NewComprehension(seq.nextID(),
+			fac.NewList(seq.nextID(), []ast.Expr{}, []int32{}),
 			"#unused",
 			node.simpleName,
 			fac.CopyExpr(node.attrAST.Expr()),
-			fac.NewLiteral(0, types.False),
-			fac.NewIdent(0, node.simpleName),
-			currAST.Expr())
+			fac.NewLiteral(seq.nextID(), types.False),
+			fac.NewIdent(seq.nextID(), node.simpleName),
+			fac.CopyExpr(currExpr))
 	}
-	return currAST
+	return currExpr
+}
+
+func (seq *attrSequence) nextID() int64 {
+	return seq.idGen(0)
 }
 
 func matchFullName(fullName string) ast.ExprMatcher {
@@ -150,21 +165,19 @@ func matchFullName(fullName string) ast.ExprMatcher {
 	}
 }
 
-func sequenceNodes(node attrNode, nodeMap map[string]attrNode, seq *attrSequence) {
-	if node.visited {
-		return
-	}
-	node.visited = true
-	// encountere a leaf node, early return
-	if len(node.inputs) == 0 {
-		seq.add(node)
-		return
-	}
+func sequenceNodes(node *attrNode, nodeMap map[string]*attrNode, seq *attrSequence) {
 	for _, inputName := range node.inputs {
 		inputAttr := nodeMap[inputName]
+		if inputAttr.visited {
+			continue
+		}
 		sequenceNodes(inputAttr, nodeMap, seq)
 	}
-	seq.add(node)
+	if !node.visited {
+		fmt.Println(node.fullName)
+		node.visited = true
+		seq.add(node)
+	}
 }
 
 func testCseEnv(t *testing.T, opts ...EnvOption) *Env {
